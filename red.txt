@@ -1,0 +1,71 @@
+npx tsx src/seed.ts
+# Vérifie qu'aucun processus node ne tourne encore
+taskkill /F /IM node.exe
+
+INSERT INTO products (id, nom, prix_catalogue, cout_revient, actif, date_creation, date_modification) 
+VALUES 
+(gen_random_uuid(), 'Chaussures Sport', 10000, 6000, true, NOW(), NOW()),
+(gen_random_uuid(), 'Montre Connectée', 15000, 9000, true, NOW(), NOW()),
+(gen_random_uuid(), 'Sac à main', 12000, 7000, true, NOW(), NOW()),
+(gen_random_uuid(), 'Parfum', 8000, 4000, true, NOW(), NOW()),
+(gen_random_uuid(), 'T-shirt', 5000, 2500, true, NOW(), NOW());
+
+SELECT * FROM products;
+
+l'admin doit pourvoir creer des charges qui serons aussi inclue dans les depenses
+
+Admin/Manager crée le stock général (produits + quantités)
+
+Admin/Manager crée des services de livraison avec leurs stocks assignés
+
+Commercial envoie une commande simple (client, produit, prix)
+
+Admin/Manager : sélectionne le service de livraison, valide → les stocks sont déduits
+
+Format prêt à copier pour WhatsApp
+
+Cette fonctionnalité est complexe et mérite d'être développée dans la Version 2.0 comme tu l'as suggéré.
+
+le recapitulatif des commande hier, le tableau de de bord dois affiché toutes les informations hier
+
+une commmande validé peut etre annuler apes 6 h de temps
+
+combien de temps les couses font dans l'historique ? elle doit affiché que la ccomade de la journé
+
+sur je dois ajouter annuler sur commentaire sur anulation d'une commande pour que l'utilisateur puisse voir pourquoi la commande a été annulé
+
+sur 1 mois a parie de 110 courses le commercial a un bonus de 10000F 
+on doit voir les stats de chaque commercial sur 1 mois et mois passé et sur 6 mois
+le Manager n'a le n'a pas le de modifier modifier le stock qu'il a definie apres 1 h
+au niveau des charges,  
+dans la section commercial, les commande doivent etre regrouper par jour par semaine au dela d'une d'une semaine ça naffiche plus pour epurer la page
+dans la page commercial nous allons ajouter une page pour que les commerciaux pour voir les ventes de tous les autres commerciaux pour ainsi creer un systeme de concurence
+c'est le commercial qui le prix du produit*****
+
+dans la page commande l'administrateur : je dois remplace copier par valider et validé par livré
+le commercial dois annuler ou modifier sa commande tands que l'admin ou le manager n'a pas encore validé la commande
+les fraits de livraison doivent etre 1000, 1500, 2000, 2500 f
+le stock des produis de livraison sont deduits dans le stock general mais lorsque une commande est soumis, le stock est deduit dans le stock du service de livraison en question
+
+
+le manager ne peut plus modifier une charge qu'il a definis apres 1 h 179 39  140504
+
+splash-
+icon.png
+
+⌛️ Computing the project fingerprints is taking longer than expected...
+⏩ To skip this step, set the environment variable: EAS_SKIP_AUTO_FINGERPRINT=1
+✔ Computed project fingerprints
+✔ Published!
+
+Branch             production
+Runtime version    2.2.1
+Platform           android, ios
+Update group ID    6493ca7b-6d58-4f0f-89a0-0035804b5d48
+Android update ID  019f7062-806b-7630-8910-f7ec8fdb32d6
+iOS update ID      019f7062-806b-7ddd-9c21-f57d7ef0ec97
+Message            Première version
+Commit             5a40392a9135b333fca9b5ffd2ab60404c7e0f4a*
+EAS Dashboard      https://expo.dev/accounts/joel_soh20/projects/NDJOH-AGOGO/updates/6493ca7b-6d58-4f0f-89a0-0035804b5d48
+
+eas update --branch production --message "Description du changement" : La prochaine fois que tu modifies le code
