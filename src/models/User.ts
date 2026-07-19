@@ -54,9 +54,17 @@ User.init({
   timestamps: true,
   createdAt: 'date_creation',
   updatedAt: 'date_modification',
-  hooks: {
-    beforeCreate: async (user: User) => {
+ hooks: {
+  beforeCreate: async (user: User) => {
+    if (user.mot_de_passe) {
+      user.mot_de_passe = await bcrypt.hash(user.mot_de_passe, 12);
+    }
+  },
+  beforeUpdate: async (user: User) => {
+    // Ne re-hasher que si le mot de passe a changé
+    if (user.changed('mot_de_passe')) {
       user.mot_de_passe = await bcrypt.hash(user.mot_de_passe, 12);
     }
   }
+}
 });

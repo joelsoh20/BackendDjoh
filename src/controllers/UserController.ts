@@ -55,26 +55,25 @@ create = async (req: Request, res: Response): Promise<void> => {
 
   update = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
-    const { nom, role, commission_mode, commission_defaut, motDePasse, mot_de_passe } = req.body;
-    const password = motDePasse || mot_de_passe;
+    const id = req.params.id as string;
+    const { nom, role, commission_mode, commission_defaut, mot_de_passe } = req.body;
 
-    const user = await this.userRepo.findById(id as string);
+    const user = await this.userRepo.findById(id);
     if (!user) return this.notFound(res, 'Utilisateur non trouvé');
 
-    const data: any = {};
-    if (nom) data.nom = nom;
-    if (role) data.role = role;
-    if (commission_mode) data.commission_mode = commission_mode;
-    if (commission_defaut !== undefined) data.commission_defaut = commission_defaut;
-    if (password) data.mot_de_passe = password;
+    if (nom) user.nom = nom;
+    if (role) user.role = role;
+    if (commission_mode) user.commission_mode = commission_mode;
+    if (commission_defaut !== undefined) user.commission_defaut = commission_defaut;
+    if (mot_de_passe && mot_de_passe.length >= 6) {
+      user.mot_de_passe = mot_de_passe; // Le hook beforeUpdate va le hasher
+    }
 
-    await this.userRepo.update(id as string, data);
-    
-    const updated = await this.userRepo.findById(id as string, {
+    await user.save();
+
+    const updated = await this.userRepo.findById(id, {
       attributes: { exclude: ['mot_de_passe'] }
     });
-
     this.success(res, updated);
   } catch (err) {
     this.error(res, 'Erreur lors de la modification');
@@ -84,11 +83,19 @@ create = async (req: Request, res: Response): Promise<void> => {
  toggleActif = async (req: Request, res: Response): Promise<void> => {
   try {
     const currentUser = (req as any).utilisateur;
-    if (currentUser.role === 'manager') {
+    if (currentUser.role !== 'admin') {
       return this.forbidden(res, 'Seul l\'administrateur peut désactiver un utilisateur');
     }
+
+    const user = await this.userRepo.findById(req.params.id as string);
+    if (!user) return this.notFound(res, 'Utilisateur non trouvé');
+
+    user.actif = !user.actif;
+    await user.save();
+
+    this.success(res, user.toJSON());
   } catch (err) {
-    this.error(res, 'Erreur lors de la modification');
+    this.error(res, 'Erreur');
   }
 };
 

@@ -33,7 +33,7 @@ export class App {
     });
     this.app.use('/api', routes);
     this.app.get('/', (req, res) => {
-      res.json({ message: 'API Compta Social Commerce', version: '1.0.0' });
+      res.json({ message: 'API Compta Social Commerce', version: '2.2.1' });
     });
   }
 
@@ -43,8 +43,6 @@ export class App {
       res.status(500).json({ success: false, message: 'Erreur serveur' });
     });
   }
-
-  
 
   async start(): Promise<void> {
     await Database.connect();
