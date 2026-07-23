@@ -17,14 +17,20 @@ export class App {
     this.setupMiddlewares();
     this.setupRoutes();
     this.setupErrorHandler();
+    
   }
 
   private setupMiddlewares(): void {
-    this.app.use(helmet());
-    this.app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
-    this.app.use(morgan('dev'));
-    this.app.use(express.json());
-  }
+  this.app.use(helmet());
+  this.app.use(cors({
+    origin: ['http://localhost:5173', 'http://localhost:8081', 'exp://*'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
+  this.app.use(morgan('dev'));
+  this.app.use(express.json());
+}
 
   private setupRoutes(): void {
     this.app.get('/test', (req, res) => {

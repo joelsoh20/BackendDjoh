@@ -7,18 +7,18 @@ export class Database {
 
   static getInstance(): Sequelize {
     if (!Database.instance) {
-      Database.instance = new Sequelize(
-        process.env.DB_NAME!,
-        process.env.DB_USER!,
-        process.env.DB_PASSWORD!,
-        {
-          host: process.env.DB_HOST,
-          port: parseInt(process.env.DB_PORT || '5432'),
-          dialect: 'postgres',
-          logging: false,
-          pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+      // Utilise DATABASE_URL uniquement
+      Database.instance = new Sequelize(process.env.DATABASE_URL!, {
+        dialect: 'postgres',
+        logging: false,
+        pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+        dialectOptions: {
+          ssl: {
+            require: true,
+            rejectUnauthorized: false
+          }
         }
-      );
+      });
     }
     return Database.instance;
   }
@@ -26,7 +26,7 @@ export class Database {
   static async connect(): Promise<void> {
     try {
       await Database.getInstance().authenticate();
-      console.log('✅ Base de données connectée');
+      console.log('✅ Base de données connectée (Supabase)');
     } catch (error) {
       console.error('❌ Erreur connexion DB:', error);
       process.exit(1);

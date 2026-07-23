@@ -140,6 +140,9 @@ export class OrderController extends BaseController {
     const id = req.params.id as string;
     const { statut, frais_livraison, service_livraison_id } = req.body;
 
+    console.log('=== updateStatut appelé ===');
+    console.log('ID:', id, 'Statut:', statut);
+
     const order = await this.orderRepo.findById(id);
     if (!order) return this.notFound(res, 'Commande non trouvée');
     if (order.cloture_id) return this.badRequest(res, 'Commande clôturée');
@@ -150,11 +153,13 @@ export class OrderController extends BaseController {
       order.date_statut_livree = new Date();
       order.frais_livraison = frais_livraison || 1000;
       order.service_livraison_id = service_livraison_id || null;
+      
+      console.log('Avant calcul - commission:', order.commission_commercial, 'commercial_id:', order.commercial_id);
       if (order.commission_commercial === 0) {
         order.commission_commercial = await this.commissionService.calculerCommission(order);
+        console.log('Après calcul - commission:', order.commission_commercial);
       }
 
-      // Déduire uniquement du stock du service de livraison
       if (service_livraison_id) {
         const { StockLivraison } = require('../models/StockLivraison');
         const stockLivraison = await StockLivraison.findOne({
@@ -168,17 +173,18 @@ export class OrderController extends BaseController {
     }
 
     if (statut === 'annulee') {
-  order.motif_annulation = req.body.motif || null;
-  const { NotificationService } = require('../services/NotificationService');
-  const notifService = new NotificationService();
-  await notifService.sendToUser(
-    order.commercial_id,
-    '❌ Commande annulée',
-    `Votre commande a été annulée. Motif: ${order.motif_annulation || 'Non spécifié'}`
-  );
-}
+      order.motif_annulation = req.body.motif || null;
+      const { NotificationService } = require('../services/NotificationService');
+      const notifService = new NotificationService();
+      await notifService.sendToUser(
+        order.commercial_id,
+        '❌ Commande annulée',
+        `Votre commande a été annulée. Motif: ${order.motif_annulation || 'Non spécifié'}`
+      );
+    }
 
     await order.save();
+    console.log('Commande sauvegardée - statut:', order.statut, 'commission:', order.commission_commercial);
 
     const { ServiceLivraison } = require('../models/ServiceLivraison');
     const orderWithService = await Order.findByPk(id, {
@@ -203,10 +209,10 @@ export class OrderController extends BaseController {
     const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
     const uneSemaine = new Date(maintenant.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    const toutes = await Order.findAll({
+    const toutesMois = await Order.findAll({
       where: { 
         commercial_id: userId,
-        date_creation: { [Op.gte]: uneSemaine }
+        date_creation: { [Op.gte]: debutMois }
       },
       include: [
         { model: Product, as: 'produit' },
@@ -215,19 +221,36 @@ export class OrderController extends BaseController {
       order: [['date_creation', 'DESC']]
     }) as any[];
 
-    const recues = toutes.filter((o: any) => o.statut === 'recue').length;
-    const livrees = toutes.filter((o: any) => o.statut === 'livree_payee');
-    const annulees = toutes.filter((o: any) => o.statut === 'annulee').length;
+    const toutes = toutesMois.filter((o: any) => new Date(o.date_creation) >= uneSemaine);
+
+    const recues = toutesMois.filter((o: any) => o.statut === 'recue').length;
+    const livrees = toutesMois.filter((o: any) => o.statut === 'livree_payee');
+    const annulees = toutesMois.filter((o: any) => o.statut === 'annulee').length;
 
     const commissionTotale = livrees.reduce((sum: number, o: any) => sum + Number(o.commission_commercial), 0);
     const produitsVendus = livrees.reduce((sum: number, o: any) => sum + o.quantite, 0);
     const totalVentes = livrees.reduce((sum: number, o: any) => sum + (Number(o.prix_unitaire_reel) * o.quantite), 0);
 
-    const totalCommandesMois = toutes.filter((o: any) => {
-      const date = new Date(o.date_creation);
-      return date >= debutMois && date <= maintenant;
-    }).length;
+    const totalCommandesMois = toutesMois.length;
     const bonus = totalCommandesMois >= 110 ? 10000 : 0;
+
+    // Évolution sur 6 mois
+    const evolution = [];
+    for (let i = 5; i >= 0; i--) {
+      const debut = new Date(maintenant.getFullYear(), maintenant.getMonth() - i, 1);
+      const fin = i === 0 ? maintenant : new Date(maintenant.getFullYear(), maintenant.getMonth() - i + 1, 0);
+      
+      const commandesPeriode = toutesMois.filter((o: any) => {
+        const date = new Date(o.date_creation);
+        return date >= debut && date <= fin && o.statut === 'livree_payee';
+      });
+
+      evolution.push({
+        mois: debut.toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' }),
+        nb_commandes: commandesPeriode.length,
+        total_ventes: commandesPeriode.reduce((sum: number, o: any) => sum + (Number(o.prix_unitaire_reel) * o.quantite), 0),
+      });
+    }
 
     const commandesSimplifiees = toutes.map((o: any) => ({
       id: o.id,
@@ -235,7 +258,6 @@ export class OrderController extends BaseController {
       client_nom: o.client_nom,
       date_creation: o.date_creation,
       statut: o.statut,
-      motif_annulation: o.motif_annulation,
       produit_nom: o.produit?.nom || 'Sans nom',
       quantite: o.quantite,
       prix_unitaire_reel: o.prix_unitaire_reel,
@@ -251,7 +273,9 @@ export class OrderController extends BaseController {
       totalVentes,
       totalCommandesMois,
       bonus,
+      evolution,
       dernieresCommandes: commandesSimplifiees.slice(0, 50),
+      
     });
   } catch (err: any) {
     console.error('getMonDashboard erreur:', err.message);

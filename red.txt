@@ -69,3 +69,5 @@ Commit             5a40392a9135b333fca9b5ffd2ab60404c7e0f4a*
 EAS Dashboard      https://expo.dev/accounts/joel_soh20/projects/NDJOH-AGOGO/updates/6493ca7b-6d58-4f0f-89a0-0035804b5d48
 
 eas update --branch production --message "Description du changement" : La prochaine fois que tu modifies le code
+
+apres jours la commande dois avoir trois etat en en attente, en cours et livré

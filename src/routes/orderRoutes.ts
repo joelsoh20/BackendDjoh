@@ -9,6 +9,7 @@ const controller = new OrderController();
 // Routes spécifiques AVANT /:id
 router.get('/mes-commandes', auth, controller.getMesCommandes);
 router.get('/mon-dashboard', auth, controller.getMonDashboard);
+router.patch('/:id/statut', auth, adminOrManager, controller.updateStatut);
 router.put('/:id', auth, controller.updateOrder);
 router.delete('/:id', auth, controller.deleteOrder);
 
@@ -16,6 +17,4 @@ router.delete('/:id', auth, controller.deleteOrder);
 router.get('/', auth, controller.getAll);
 router.get('/:id', auth, controller.getById);
 router.post('/', auth, controller.create);
-router.patch('/:id/statut', auth, adminOrManager, controller.updateStatut);
-
 export default router;
