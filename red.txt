@@ -71,3 +71,7 @@ EAS Dashboard      https://expo.dev/accounts/joel_soh20/projects/NDJOH-AGOGO/upd
 eas update --branch production --message "Description du changement" : La prochaine fois que tu modifies le code
 
 apres jours la commande dois avoir trois etat en en attente, en cours et livré
+
+git add .
+git commit -m "Fix: Ordre des middlewares - express.json avant les routes"
+git push origin main

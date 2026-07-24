@@ -12,11 +12,17 @@ export class AuthController extends BaseController {
 
   login = async (req: Request, res: Response): Promise<void> => {
   try {
+    // 🔍 LOGS DE DEBUG
+    console.log('📦 Corps brut reçu:', req.body);
+    console.log('📦 Headers Content-Type:', req.headers['content-type']);
+    console.log('📦 Clés dans le corps:', Object.keys(req.body || {}));
+    
     const { nom, mot_de_passe } = req.body;
     
-    console.log('📦 Login reçu:', { nom });
+    console.log('📦 Login reçu:', { nom, mot_de_passe: mot_de_passe ? '***' : 'undefined' });
     
     if (!nom || !mot_de_passe) {
+      console.log('❌ Champs manquants:', { nom: !!nom, mot_de_passe: !!mot_de_passe });
       res.status(400).json({ 
         success: false, 
         message: 'Veuillez fournir un nom et un mot de passe' 
@@ -24,10 +30,11 @@ export class AuthController extends BaseController {
       return;
     }
 
+    console.log('🔍 Recherche utilisateur:', nom);
     const result = await this.authService.login(nom, mot_de_passe);
+    console.log('📊 Résultat auth:', { success: result.success, message: result.message });
     
     if (!result.success) {
-      // 🔥 Vérification safe de result.message
       const errorMessage = result.message || 'Identifiants incorrects';
       
       if (errorMessage.includes('Identifiant')) {
@@ -49,6 +56,7 @@ export class AuthController extends BaseController {
       return;
     }
 
+    console.log('✅ Connexion réussie pour:', nom);
     res.status(200).json({
       success: true,
       message: '✅ Connexion réussie',
