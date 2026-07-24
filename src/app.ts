@@ -43,11 +43,14 @@ export class App {
 }
 
   private setupRoutes(): void {
-    this.app.use('/api', routes);
-    this.app.get('/', (req, res) => {
-      res.json({ message: 'API Compta Social Commerce', version: '2.2.1' });
-    });
-  }
+  console.log('🔍 Montage des routes /api...');
+  this.app.use('/api', routes);
+  console.log('✅ Routes /api montées');
+  
+  this.app.get('/', (req, res) => {
+    res.json({ message: 'API Compta Social Commerce', version: '2.2.1' });
+  });
+}
 
   private setupErrorHandler(): void {
     this.app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
