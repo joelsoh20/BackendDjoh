@@ -21,28 +21,28 @@ export class App {
   }
 
   private setupMiddlewares(): void {
+  // 1. Sécurité et logs (ordre moins important)
   this.app.use(helmet());
   this.app.use(cors({
-  origin: [
-    'http://localhost:5173',      // Vite en développement
-    'http://localhost:8081',      // Si tu utilises un autre serveur web
-    'https://ton-site.netlify.app', // Frontend web en production
-    'https://ton-site.vercel.app',  // Si tu utilises Vercel
-    'exp://*'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:8081',
+      'https://ton-site.netlify.app',
+      'https://ton-site.vercel.app',
+      'exp://*'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  }));
   this.app.use(morgan('dev'));
+  
+  // 2. IMPORTANT : Parseur JSON AVANT les routes
   this.app.use(express.json());
+  this.app.use(express.urlencoded({ extended: true }));
 }
 
   private setupRoutes(): void {
-    this.app.get('/test', (req, res) => {
-    console.log('Test OK');
-    res.json({ message: 'test ok' });
-    });
     this.app.use('/api', routes);
     this.app.get('/', (req, res) => {
       res.json({ message: 'API Compta Social Commerce', version: '2.2.1' });
