@@ -23,11 +23,17 @@ export class App {
   private setupMiddlewares(): void {
   this.app.use(helmet());
   this.app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:8081', 'exp://*'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  }));
+  origin: [
+    'http://localhost:5173',      // Vite en développement
+    'http://localhost:8081',      // Si tu utilises un autre serveur web
+    'https://ton-site.netlify.app', // Frontend web en production
+    'https://ton-site.vercel.app',  // Si tu utilises Vercel
+    'exp://*'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
   this.app.use(morgan('dev'));
   this.app.use(express.json());
 }
