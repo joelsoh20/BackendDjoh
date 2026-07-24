@@ -6,21 +6,30 @@ import { Op } from 'sequelize';
 export class AuthService {
   
   // Change "identifiant" en "nom"
-  async login(nom: string, motDePasse: string): Promise<ApiResponse<{ token: string; utilisateur: Partial<User> }>> {
-    // Recherche par nom
-    const user = await User.findOne({
-      where: { nom: nom, actif: true }  // ← Changé ici aussi
-    });
-    
-    if (!user) {
-      return { success: false, message: 'Identifiant ou mot de passe incorrect' };
-    }
+  async login(nom: string, motDePasse: string) {
+  // Vérifier si l'utilisateur existe
+  const user = await User.findOne({ 
+    where: { nom: nom, actif: true }
+  });
+  
+  if (!user) {
+    return { 
+      success: false, 
+      message: 'Identifiant incorrect'  // ← Message spécifique
+    };
+  }
 
-    const valid = await user.verifierMotDePasse(motDePasse);
-    if (!valid) {
-      return { success: false, message: 'Identifiant ou mot de passe incorrect' };
-    }
+  console.log('✅ Utilisateur trouvé:', user.nom);
+  console.log('🔑 Hash stocké:', user.mot_de_passe);
+  console.log('🔑 Hash attendu:', '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewY5GyFkR0NtVnUu');
 
+  const valid = await user.verifierMotDePasse(motDePasse);
+  if (!valid) {
+    return { 
+      success: false, 
+      message: 'Mot de passe incorrect'  // ← Message spécifique
+    };
+  }
     const payload: JwtPayload = { userId: user.id, role: user.role };
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { 
       expiresIn: '7d'

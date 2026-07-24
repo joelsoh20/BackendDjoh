@@ -11,28 +11,58 @@ export class AuthController extends BaseController {
   }
 
   login = async (req: Request, res: Response): Promise<void> => {
-    try {
-      // Utilise "nom" au lieu de "identifiant"
-      const { nom, mot_de_passe } = req.body;  // ← Changé !
-      
-      // console.log('Login reçu:', { nom, mot_de_passe: '***' });
-      
-      if (!nom || !mot_de_passe) {
-        return this.badRequest(res, 'Nom et mot de passe requis');
-      }
-
-      const result = await this.authService.login(nom, mot_de_passe);  // ← Changé !
-      
-      if (!result.success) {
-        return this.unauthorized(res, result.message);
-      }
-
-      this.success(res, result.data);
-    } catch (err) {
-      console.error('Erreur login:', err);
-      this.error(res, 'Erreur serveur');
+  try {
+    const { nom, mot_de_passe } = req.body;
+    
+    console.log('📦 Login reçu:', { nom });
+    
+    if (!nom || !mot_de_passe) {
+      res.status(400).json({ 
+        success: false, 
+        message: 'Veuillez fournir un nom et un mot de passe' 
+      });
+      return;
     }
-  };
+
+    const result = await this.authService.login(nom, mot_de_passe);
+    
+    if (!result.success) {
+      // 🔥 Vérification safe de result.message
+      const errorMessage = result.message || 'Identifiants incorrects';
+      
+      if (errorMessage.includes('Identifiant')) {
+        res.status(401).json({ 
+          success: false, 
+          message: '❌ Nom d\'utilisateur incorrect' 
+        });
+      } else if (errorMessage.includes('Mot de passe')) {
+        res.status(401).json({ 
+          success: false, 
+          message: '❌ Mot de passe incorrect' 
+        });
+      } else {
+        res.status(401).json({ 
+          success: false, 
+          message: '❌ Identifiants incorrects' 
+        });
+      }
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: '✅ Connexion réussie',
+      data: result.data
+    });
+    
+  } catch (err) {
+    console.error('❌ Erreur login:', err);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur serveur, veuillez réessayer' 
+    });
+  }
+};
 
   getProfile = async (req: Request, res: Response): Promise<void> => {
     try {
