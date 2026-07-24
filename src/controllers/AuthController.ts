@@ -17,7 +17,9 @@ export class AuthController extends BaseController {
     console.log('📦 Headers Content-Type:', req.headers['content-type']);
     console.log('📦 Clés dans le corps:', Object.keys(req.body || {}));
     
-    const { nom, mot_de_passe } = req.body;
+    // 🔥 Accepte les deux formats (nom/identifiant et mot_de_passe/motDePasse)
+    const nom = req.body.nom || req.body.identifiant;
+    const mot_de_passe = req.body.mot_de_passe || req.body.motDePasse;
     
     console.log('📦 Login reçu:', { nom, mot_de_passe: mot_de_passe ? '***' : 'undefined' });
     
