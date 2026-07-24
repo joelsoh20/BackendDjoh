@@ -7,7 +7,9 @@ export class Database {
 
   static getInstance(): Sequelize {
     if (!Database.instance) {
-      // Utilise DATABASE_URL uniquement
+      // Log pour vérifier l'URL
+      console.log('🔍 DATABASE_URL:', process.env.DATABASE_URL);
+      
       Database.instance = new Sequelize(process.env.DATABASE_URL!, {
         dialect: 'postgres',
         logging: false,
