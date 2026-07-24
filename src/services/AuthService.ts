@@ -5,11 +5,12 @@ import { Op } from 'sequelize';
 
 export class AuthService {
   
-  async login(identifiant: string, motDePasse: string): Promise<ApiResponse<{ token: string; utilisateur: Partial<User> }>> {
-    // Recherche par email OU par nom
+  // Change "identifiant" en "nom"
+  async login(nom: string, motDePasse: string): Promise<ApiResponse<{ token: string; utilisateur: Partial<User> }>> {
+    // Recherche par nom
     const user = await User.findOne({
-    where: { nom: identifiant, actif: true }
-  });
+      where: { nom: nom, actif: true }  // ← Changé ici aussi
+    });
     
     if (!user) {
       return { success: false, message: 'Identifiant ou mot de passe incorrect' };
@@ -22,8 +23,9 @@ export class AuthService {
 
     const payload: JwtPayload = { userId: user.id, role: user.role };
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { 
-  expiresIn: '7d'
-});
+      expiresIn: '7d'
+    });
+    
     return {
       success: true,
       data: { token, utilisateur: user.toJSON() }
