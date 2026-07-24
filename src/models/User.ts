@@ -1,6 +1,6 @@
 import { DataTypes, Model } from 'sequelize';
 import { Database } from '../config/database';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { Role, CommissionMode } from '../types';
 
 const sequelize = Database.getInstance();
