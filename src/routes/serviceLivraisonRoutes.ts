@@ -11,5 +11,6 @@ router.post('/', auth, adminOrManager, controller.create);
 router.patch('/:id/toggle', auth, adminOrManager, controller.toggleActif);
 router.post('/stock', auth, adminOrManager, controller.ajouterStock);
 router.get('/:serviceId/stocks', auth, adminOrManager, controller.getStocks);
+router.delete('/:id', auth, adminOrManager, controller.delete);
 
 export default router;
