@@ -6,6 +6,7 @@ import { Order } from '../models/Order';
 import { Product } from '../models/Product';
 import { User } from '../models/User';
 import { Op } from 'sequelize';
+import { StockLivraison } from '../models/StockLivraison';
 
 export class OrderController extends BaseController {
   private orderRepo: OrderRepository;
@@ -306,10 +307,12 @@ export class OrderController extends BaseController {
       });
     }
 
+    // ✅ CORRECTION : Ajout de client_telephone
     const commandesSimplifiees = toutes.map((o: any) => ({
       id: o.id,
       group_id: o.group_id,
       client_nom: o.client_nom,
+      client_telephone: o.client_telephone, // ← AJOUTE CETTE LIGNE
       date_creation: o.date_creation,
       statut: o.statut,
       produit_nom: o.produit?.nom || 'Sans nom',
@@ -329,7 +332,6 @@ export class OrderController extends BaseController {
       bonus,
       evolution,
       dernieresCommandes: commandesSimplifiees.slice(0, 50),
-      
     });
   } catch (err: any) {
     console.error('getMonDashboard erreur:', err.message);
@@ -369,6 +371,119 @@ deleteOrder = async (req: Request, res: Response): Promise<void> => {
     this.success(res, order, 'Commande annulée');
   } catch (err) {
     this.error(res, 'Erreur');
+  }
+};
+
+
+ // Vérifie si un produit est disponible dans le service de livraison
+ 
+private async verifierStockServiceLivraison(
+  productId: string,
+  quantite: number,
+  serviceLivraisonId: string
+): Promise<{ valid: boolean; message?: string }> {
+  try {
+    // Vérifier si le produit existe dans ce service
+    const stockService = await StockLivraison.findOne({
+      where: {
+        service_id: serviceLivraisonId,
+        product_id: productId
+      }
+    });
+
+    if (!stockService) {
+      return {
+        valid: false,
+        message: `❌ Ce produit n'est pas disponible dans le service de livraison sélectionné`
+      };
+    }
+
+    // Vérifier la quantité disponible
+    if (stockService.quantite < quantite) {
+      return {
+        valid: false,
+        message: `❌ Quantité insuffisante. Stock disponible : ${stockService.quantite}`
+      };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    console.error('Erreur vérification stock:', error);
+    return {
+      valid: false,
+      message: '❌ Erreur lors de la vérification du stock'
+    };
+  }
+}
+
+ // Assigner un service de livraison à une commande (Manager/Admin uniquement)
+ 
+assignerServiceLivraison = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { orderId, serviceLivraisonId } = req.body;
+    const userRole = (req as any).utilisateur.role;
+
+    // Vérifier que l'utilisateur est manager ou admin
+    if (userRole !== 'manager' && userRole !== 'admin') {
+      res.status(403).json({
+        success: false,
+        message: '❌ Seul un manager ou admin peut assigner un service de livraison'
+      });
+      return;
+    }
+
+    // Récupérer la commande
+    const order = await Order.findByPk(orderId);
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: '❌ Commande non trouvée'
+      });
+      return;
+    }
+
+    // ✅ VÉRIFICATION DU STOCK AVANT ASSIGNATION
+    const verification = await this.verifierStockServiceLivraison(
+      order.product_id,
+      order.quantite,
+      serviceLivraisonId
+    );
+
+    if (!verification.valid) {
+      res.status(400).json({
+        success: false,
+        message: verification.message
+      });
+      return;
+    }
+
+    // ✅ Mettre à jour la commande avec le service de livraison
+    order.service_livraison_id = serviceLivraisonId;
+    await order.save();
+
+    // 📦 Mettre à jour le stock du service
+    await StockLivraison.decrement(
+      { quantite: order.quantite },
+      {
+        where: {
+          service_id: serviceLivraisonId,
+          product_id: order.product_id
+        }
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: '✅ Service de livraison assigné avec succès',
+      data: order
+    });
+
+  } catch (error) {
+    console.error('❌ Erreur assignation:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur lors de l\'assignation du service de livraison'
+    });
   }
 };
 }

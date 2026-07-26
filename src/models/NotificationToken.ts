@@ -18,4 +18,5 @@ NotificationToken.init({
   tableName: 'notification_tokens',
   timestamps: true,
   createdAt: 'date_creation',
+  updatedAt: false,
 });

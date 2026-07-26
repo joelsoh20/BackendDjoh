@@ -3,6 +3,7 @@ import { OrderController } from '../controllers/OrderController';
 import { auth } from '../middlewares/auth';
 import { adminOrManager } from '../middlewares/role';
 
+
 const router = Router();
 const controller = new OrderController();
 
@@ -12,6 +13,12 @@ router.get('/mon-dashboard', auth, controller.getMonDashboard);
 router.patch('/:id/statut', auth, adminOrManager, controller.updateStatut);
 router.put('/:id', auth, controller.updateOrder);
 router.delete('/:id', auth, controller.deleteOrder);
+router.patch(
+  '/assigner-service',
+  auth,                    
+  adminOrManager,          
+ controller.assignerServiceLivraison
+);
 
 // Routes générales
 router.get('/', auth, controller.getAll);
