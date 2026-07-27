@@ -2,9 +2,10 @@ import { User } from '../models/User';
 import { Product } from '../models/Product';
 import { ProductCommission } from '../models/ProductCommission';
 import { Order } from '../models/Order';
+import { OrderComment } from '../models/OrderComment'; // ← AJOUTÉ
 import { Charge } from '../models/Charge';
 import { MonthlyClosing } from '../models/MonthlyClosing';
- import { Stock } from '../models/Stock';
+import { Stock } from '../models/Stock';
 import { StockLivraison } from '../models/StockLivraison';
 import { ServiceLivraison } from '../models/ServiceLivraison';
 
@@ -94,16 +95,34 @@ export const setupAssociations = (): void => {
   });
 
   ServiceLivraison.hasMany(StockLivraison, { foreignKey: 'service_id', as: 'stocks' });
-StockLivraison.belongsTo(ServiceLivraison, { foreignKey: 'service_id', as: 'service' });
-StockLivraison.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
+  StockLivraison.belongsTo(ServiceLivraison, { foreignKey: 'service_id', as: 'service' });
+  StockLivraison.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
 
-ServiceLivraison.hasMany(Order, { foreignKey: 'service_livraison_id', as: 'commandes' });
-Order.belongsTo(ServiceLivraison, { foreignKey: 'service_livraison_id', as: 'service_livraison' });
+  ServiceLivraison.hasMany(Order, { foreignKey: 'service_livraison_id', as: 'commandes' });
+  Order.belongsTo(ServiceLivraison, { foreignKey: 'service_livraison_id', as: 'service_livraison' });
 
+  // ============================================
+  // ORDERCOMMENT ↔ USER
+  // ============================================
+  OrderComment.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'User'
+  });
 
+  // ============================================
+  // ORDERCOMMENT ↔ ORDER
+  // ============================================
+  Order.hasMany(OrderComment, {
+    foreignKey: 'order_id',
+    as: 'commentaires'
+  });
+  OrderComment.belongsTo(Order, {
+    foreignKey: 'order_id',
+    as: 'commande'
+  });
 
   console.log('✅ Associations configurées');
 
-Product.hasOne(Stock, { foreignKey: 'product_id', as: 'stock' });
-Stock.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
+  Product.hasOne(Stock, { foreignKey: 'product_id', as: 'stock' });
+  Stock.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
 };

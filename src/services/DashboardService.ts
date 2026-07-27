@@ -13,85 +13,87 @@ export class DashboardService {
     this.chargeRepo = new ChargeRepository();
   }
 
- async getDashboard(): Promise<any> {
-  const maintenant = new Date();
-  const debutJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
-  const finJour = new Date(debutJour.getTime() + 24 * 60 * 60 * 1000);
-  
-  // Hier
-  const debutHier = new Date(debutJour.getTime() - 24 * 60 * 60 * 1000);
-  const finHier = debutJour;
-  
-  const debutSemaine = new Date(maintenant);
-  debutSemaine.setDate(maintenant.getDate() - maintenant.getDay());
-  const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
-  const debutAnnee = new Date(maintenant.getFullYear(), 0, 1);
-  const debutSemestre = new Date(maintenant.getFullYear(), maintenant.getMonth() - 6, 1);
+  async getDashboard(): Promise<any> {
+    const maintenant = new Date();
+    const debutJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
+    const finJour = new Date(debutJour.getTime() + 24 * 60 * 60 * 1000);
+    const debutHier = new Date(debutJour.getTime() - 24 * 60 * 60 * 1000);
+    const finHier = debutJour;
 
-  const [statsJour, statsHier, statsSemaine, statsMois, statsAnnee, statsSemestre, topProduits, evolution, charges] = await Promise.all([
-    this.getStatsPeriode(debutJour, finJour),
-    this.getStatsPeriode(debutHier, finHier),
-    this.getStatsPeriode(debutSemaine, finJour),
-    this.getStatsPeriode(debutMois, finJour),
-    this.getStatsPeriode(debutAnnee, finJour),
-    this.getStatsPeriode(debutSemestre, finJour),
-    this.getTopProduits(debutMois, finJour),
-    this.getEvolution(debutSemestre, finJour),
-    this.chargeRepo.findByPeriode(debutMois, finJour)
-  ]);
+    const debutSemaine = new Date(maintenant);
+    debutSemaine.setDate(maintenant.getDate() - maintenant.getDay());
+    const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+    const debutAnnee = new Date(maintenant.getFullYear(), 0, 1);
+    const debutSemestre = new Date(maintenant.getFullYear(), maintenant.getMonth() - 6, 1);
 
-  const totalCharges = charges.reduce((sum, c) => sum + Number(c.montant), 0);
-  const joursEcoules = Math.ceil((maintenant.getTime() - debutAnnee.getTime()) / (1000 * 60 * 60 * 24));
-  const joursTotal = 365;
+    const [
+      statsJour, statsHier, statsSemaine, statsMois,
+      statsAnnee, statsSemestre, topProduits, evolution, charges
+    ] = await Promise.all([
+      this.getStatsPeriode(debutJour, finJour),
+      this.getStatsPeriode(debutHier, finHier),
+      this.getStatsPeriode(debutSemaine, finJour),
+      this.getStatsPeriode(debutMois, finJour),
+      this.getStatsPeriode(debutAnnee, finJour),
+      this.getStatsPeriode(debutSemestre, finJour),
+      this.getTopProduits(debutMois, finJour),
+      this.getEvolution(debutSemestre, finJour),
+      this.chargeRepo.findByPeriode(debutMois, finJour)
+    ]);
 
-  return {
-    jour: statsJour,
-    hier: statsHier,
-    semaine: statsSemaine,
-    mois: {
-      ...statsMois,
-      beneficeBrut: statsMois.beneficeNet,
-      beneficeNet: statsMois.beneficeNet - totalCharges,
-      totalCharges,
-      detailsCharges: charges.map(c => ({ type: c.type, montant: Number(c.montant) })),
-    },
-    semestre: {
-      ...statsSemestre,
-      moyenneMensuelle: Math.round(statsSemestre.chiffreAffaires / 6)
-    },
-    annee: {
-      ...statsAnnee,
-      projectionCA: Math.round((statsAnnee.chiffreAffaires / joursEcoules) * joursTotal),
-      projectionBenefice: Math.round((statsAnnee.beneficeNet / joursEcoules) * joursTotal)
-    },
-    topProduits,
-    evolutionMensuelle: evolution
-  };
-}
+    const totalCharges = charges.reduce((sum, c) => sum + Number(c.montant), 0);
+    const joursEcoules = Math.ceil((maintenant.getTime() - debutAnnee.getTime()) / (1000 * 60 * 60 * 24));
+    const joursTotal = 365;
 
-  private async getStatsPeriode(debut: Date, fin: Date) {
-  const orders = await this.orderRepo.findByPeriode(debut, fin, 'livree_payee');
-  
-  let chiffreAffaires = 0;
-  let beneficeNet = 0;
-
-  for (const o of orders) {
-    const ca = Number(o.prix_unitaire_reel) * o.quantite;
-    chiffreAffaires += ca;
-    
-    // Récupérer le coût de revient du produit
-    const produit = (o as any).produit;
-    const coutRevient = produit ? Number(produit.cout_revient) * o.quantite : 0;
-    
-    beneficeNet += ca - Number(o.frais_livraison) - Number(o.commission_commercial) - coutRevient;
+    return {
+      jour: statsJour,
+      hier: statsHier,
+      semaine: statsSemaine,
+      mois: {
+        ...statsMois,
+        beneficeBrut: statsMois.beneficeNet,
+        beneficeNet: statsMois.beneficeNet - totalCharges,
+        totalCharges,
+        detailsCharges: charges.map(c => ({ type: c.type, montant: Number(c.montant) })),
+      },
+      semestre: {
+        ...statsSemestre,
+        moyenneMensuelle: Math.round(statsSemestre.chiffreAffaires / 6)
+      },
+      annee: {
+        ...statsAnnee,
+        projectionCA: Math.round((statsAnnee.chiffreAffaires / joursEcoules) * joursTotal),
+        projectionBenefice: Math.round((statsAnnee.beneficeNet / joursEcoules) * joursTotal)
+      },
+      topProduits,
+      evolutionMensuelle: evolution
+    };
   }
 
-  return {
-    chiffreAffaires: Math.round(chiffreAffaires),
-    beneficeNet: Math.round(beneficeNet),
-    nombreCommandes: orders.length
-  };
-}
+  private async getStatsPeriode(debut: Date, fin: Date) {
+    const orders = await this.orderRepo.findByPeriode(debut, fin, 'livree_payee');
+    
+    let chiffreAffaires = 0;
+    let beneficeNet = 0;
+
+    for (const o of orders) {
+      const ca = Number(o.prix_unitaire_reel) * o.quantite;
+      chiffreAffaires += ca;
+      const produit = (o as any).produit;
+      const coutRevient = produit ? Number(produit.cout_revient) * o.quantite : 0;
+      beneficeNet += ca - Number(o.frais_livraison) - Number(o.commission_commercial) - coutRevient;
+    }
+
+    // Nombre de commandes distinctes (par group_id)
+    const groupIds = new Set(orders.map(o => (o as any).group_id || o.id));
+    const nombreCommandes = groupIds.size;
+
+    return {
+      chiffreAffaires: Math.round(chiffreAffaires),
+      beneficeNet: Math.round(beneficeNet),
+      nombreCommandes
+    };
+  }
 
   private async getTopProduits(debut: Date, fin: Date) {
     const orders = await Order.findAll({
@@ -115,22 +117,14 @@ export class DashboardService {
         existing.ca += ca;
         existing.nombre += o.quantite;
       } else {
-        produitsMap.set(o.product_id, {
-          id: o.product_id,
-          nom: produit.nom,
-          ca,
-          nombre: o.quantite
-        });
+        produitsMap.set(o.product_id, { id: o.product_id, nom: produit.nom, ca, nombre: o.quantite });
       }
     }
 
     return Array.from(produitsMap.values())
       .sort((a, b) => b.ca - a.ca)
       .slice(0, 5)
-      .map(p => ({
-        ...p,
-        chiffreAffaires: Math.round(p.ca)
-      }));
+      .map(p => ({ ...p, chiffreAffaires: Math.round(p.ca) }));
   }
 
   private async getEvolution(debut: Date, fin: Date) {

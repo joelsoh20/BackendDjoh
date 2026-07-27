@@ -6,50 +6,57 @@ import { Database } from '../config/database';
 export class StatsController extends BaseController {
 
   getClassement = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const maintenant = new Date();
-      const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
-      const debutMoisPrecedent = new Date(maintenant.getFullYear(), maintenant.getMonth() - 1, 1);
-      const finMoisPrecedent = new Date(maintenant.getFullYear(), maintenant.getMonth(), 0);
-      const sequelize = Database.getInstance();
+  try {
+    const maintenant = new Date();
+    const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+    const debutMoisPrecedent = new Date(maintenant.getFullYear(), maintenant.getMonth() - 1, 1);
+    const finMoisPrecedent = new Date(maintenant.getFullYear(), maintenant.getMonth(), 0);
+    const sequelize = Database.getInstance();
 
-      const [classementMois] = await sequelize.query(`
-        SELECT u.id, u.nom,
-          COUNT(o.id) as nb_commandes,
-          COALESCE(SUM(o.quantite), 0) as produits_vendus,
-          COALESCE(SUM(o.prix_unitaire_reel * o.quantite), 0) as total_ventes
-        FROM users u
-        LEFT JOIN orders o ON o.commercial_id = u.id 
-          AND o.statut = 'livree_payee'
-          AND o.date_statut_livree >= '${debutMois.toISOString().split('T')[0]}'
-        WHERE u.role = 'commercial' AND u.actif = true
-        GROUP BY u.id, u.nom
-        ORDER BY nb_commandes DESC
-      `);
+    // ----- Classement MOIS EN COURS -----
+const [classementMois] = await sequelize.query(`
+  SELECT u.id, u.nom,
+    COUNT(DISTINCT o.group_id)::int as nb_commandes,
+    COALESCE(SUM(o.quantite), 0)::int as produits_vendus,
+    COALESCE(SUM(o.prix_unitaire_reel * o.quantite), 0)::decimal as total_ventes
+  FROM users u
+  LEFT JOIN orders o ON o.commercial_id = u.id 
+    AND o.statut = 'livree_payee'
+    AND o.date_statut_livree >= '${debutMois.toISOString().split('T')[0]}'
+  WHERE u.role = 'commercial' AND u.actif = true
+  GROUP BY u.id, u.nom
+  ORDER BY nb_commandes DESC
+`);
 
-      const [classementMoisPrecedent] = await sequelize.query(`
-        SELECT u.id, u.nom,
-          COUNT(o.id) as nb_commandes,
-          COALESCE(SUM(o.quantite), 0) as produits_vendus,
-          COALESCE(SUM(o.prix_unitaire_reel * o.quantite), 0) as total_ventes
-        FROM users u
-        LEFT JOIN orders o ON o.commercial_id = u.id 
-          AND o.statut = 'livree_payee'
-          AND o.date_statut_livree BETWEEN '${debutMoisPrecedent.toISOString().split('T')[0]}' AND '${finMoisPrecedent.toISOString().split('T')[0]}'
-        WHERE u.role = 'commercial' AND u.actif = true
-        GROUP BY u.id, u.nom
-        ORDER BY nb_commandes DESC
-      `);
+    // ----- MOIS PRÉCÉDENT -----
+    const [classementMoisPrecedent] = await sequelize.query(`
+      SELECT 
+        u.id,
+        u.nom,
+        COUNT(DISTINCT o.group_id)::int AS nb_commandes,
+        COALESCE(SUM(o.quantite), 0)::int AS produits_vendus,
+        COALESCE(SUM(o.prix_unitaire_reel * o.quantite), 0)::decimal AS total_ventes
+      FROM users u
+      LEFT JOIN orders o 
+        ON o.commercial_id = u.id 
+        AND o.statut = 'livree_payee'
+        AND o.date_statut_livree 
+          BETWEEN '${debutMoisPrecedent.toISOString().split('T')[0]}' 
+          AND '${finMoisPrecedent.toISOString().split('T')[0]}'
+      WHERE u.role = 'commercial' AND u.actif = true
+      GROUP BY u.id, u.nom
+      ORDER BY nb_commandes DESC, total_ventes DESC
+    `);
 
-      this.success(res, {
-        mois: classementMois,
-        moisPrecedent: classementMoisPrecedent,
-      });
-    } catch (err: any) {
-      console.error('Erreur classement:', err.message);
-      this.error(res, 'Erreur');
-    }
-  };
+    this.success(res, {
+      mois: classementMois,
+      moisPrecedent: classementMoisPrecedent,
+    });
+  } catch (err: any) {
+    console.error('Erreur classement:', err.message);
+    this.error(res, 'Erreur');
+  }
+};
 
   getStatsCommercial = async (req: Request, res: Response): Promise<void> => {
     try {

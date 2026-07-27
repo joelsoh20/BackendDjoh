@@ -1,7 +1,5 @@
-
 import { Sequelize } from 'sequelize';
 import dotenv from 'dotenv';
-
 dotenv.config();
 
 export class Database {
@@ -9,46 +7,28 @@ export class Database {
 
   static getInstance(): Sequelize {
     if (!Database.instance) {
-      const databaseUrl = process.env.DATABASE_URL;
-
-      if (!databaseUrl) {
-        throw new Error('❌ La variable DATABASE_URL est introuvable.');
-      }
-
-      Database.instance = new Sequelize(databaseUrl, {
+      Database.instance = new Sequelize(
+        process.env.DB_NAME!,
+        process.env.DB_USER!,
+        process.env.DB_PASSWORD!,
+        {
+          host: process.env.DB_HOST,
+          port: parseInt(process.env.DB_PORT || '5432'),
         dialect: 'postgres',
         logging: false,
-
-        pool: {
-          max: 10,
-          min: 0,
-          acquire: 30000,
-          idle: 10000,
-        },
-
-        dialectOptions: {
-          ssl: {
-            require: true,
-            rejectUnauthorized: false,
-          },
-        },
-
-        define: {
-          timestamps: true,
-          freezeTableName: true,
-        },
-      });
+          pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+        }
+      );
     }
-
     return Database.instance;
   }
 
   static async connect(): Promise<void> {
     try {
       await Database.getInstance().authenticate();
-      console.log('✅ Base de données connectée (Supabase)');
+      console.log('✅ Base de données connectée');
     } catch (error) {
-      console.error('❌ Erreur de connexion à Supabase :', error);
+      console.error('❌ Erreur connexion DB:', error);
       process.exit(1);
     }
   }
