@@ -1,23 +1,17 @@
 import { Router } from 'express';
+import { NotificationController } from '../controllers/NotificationController';
 import { auth } from '../middlewares/auth';
-import { NotificationToken } from '../models/NotificationToken';
+import { adminOrManager } from '../middlewares/role';
 
 const router = Router();
+const controller = new NotificationController();
 
-router.post('/register', auth, async (req, res) => {
-  try {
-    const userId = (req as any).utilisateur.id;
-    const { token } = req.body;
+// 🔓 Routes accessibles à tous les utilisateurs authentifiés
+router.post('/register', auth, controller.registerToken);
+router.delete('/token', auth, controller.removeToken);
 
-    await NotificationToken.findOrCreate({
-      where: { user_id: userId, token },
-      defaults: { user_id: userId, token }
-    });
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false });
-  }
-});
+// 🔒 Routes réservées aux managers/admins
+router.post('/send', auth, adminOrManager, controller.sendToUser);
+router.post('/send-group', auth, adminOrManager, controller.sendToGroup);
 
 export default router;

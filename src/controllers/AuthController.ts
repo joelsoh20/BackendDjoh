@@ -14,14 +14,14 @@ export class AuthController extends BaseController {
   try {
     // 🔍 LOGS DE DEBUG
     console.log('📦 Corps brut reçu:', req.body);
-    console.log('📦 Headers Content-Type:', req.headers['content-type']);
-    console.log('📦 Clés dans le corps:', Object.keys(req.body || {}));
+    //console.log('📦 Headers Content-Type:', req.headers['content-type']);
+    //console.log('📦 Clés dans le corps:', Object.keys(req.body || {}));
     
     // 🔥 Accepte les deux formats (nom/identifiant et mot_de_passe/motDePasse)
     const nom = req.body.nom || req.body.identifiant;
     const mot_de_passe = req.body.mot_de_passe || req.body.motDePasse;
     
-    console.log('📦 Login reçu:', { nom, mot_de_passe: mot_de_passe ? '***' : 'undefined' });
+    //console.log('📦 Login reçu:', { nom, mot_de_passe: mot_de_passe ? '***' : 'undefined' });
     
     if (!nom || !mot_de_passe) {
       console.log('❌ Champs manquants:', { nom: !!nom, mot_de_passe: !!mot_de_passe });
@@ -34,7 +34,7 @@ export class AuthController extends BaseController {
 
     console.log('🔍 Recherche utilisateur:', nom);
     const result = await this.authService.login(nom, mot_de_passe);
-    console.log('📊 Résultat auth:', { success: result.success, message: result.message });
+    //console.log('📊 Résultat auth:', { success: result.success, message: result.message });
     
     if (!result.success) {
       const errorMessage = result.message || 'Identifiants incorrects';

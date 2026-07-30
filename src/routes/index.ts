@@ -10,7 +10,9 @@ import exportRoutes from './exportRoutes';
 import stockRoutes from './stockRoutes';
 import serviceLivraisonRoutes from './serviceLivraisonRoutes';
 import statsRoutes from './statsRoutes';
-import orderCommentRoutes from './orderCommentRoutes'; // ← AJOUTÉ
+import orderCommentRoutes from './orderCommentRoutes'; 
+import notificationRoutes from './notificationRoutes';
+
 
 const router = Router();
 
@@ -25,6 +27,7 @@ router.use('/exports', exportRoutes);
 router.use('/stocks', stockRoutes);
 router.use('/services-livraison', serviceLivraisonRoutes);
 router.use('/stats', statsRoutes);
-router.use('/order-comments', orderCommentRoutes); // ← AJOUTÉ
+router.use('/order-comments', orderCommentRoutes); 
+router.use('/notifications', notificationRoutes);
 
 export default router;
