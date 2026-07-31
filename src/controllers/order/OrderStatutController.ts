@@ -15,101 +15,163 @@ export class OrderStatutController extends OrderController {
   }
 
   updateStatut = async (req: Request, res: Response): Promise<void> => {
-    try {
-      const id = req.params.id as string;
-      const { statut, frais_livraison, service_livraison_id } = req.body;
+  try {
+    const id = req.params.id as string;
+    const { statut, frais_livraison, service_livraison_id } = req.body;
 
-      const order = await this.orderRepo.findById(id);
-      if (!order) return this.notFound(res, 'Commande non trouvée');
-      if (order.cloture_id) return this.badRequest(res, 'Commande clôturée');
+    console.log("======================================");
+    console.log("🚀 UPDATE STATUT");
+    console.log("ID :", id);
+    console.log("Statut demandé :", statut);
 
-      const statutActuel = order.statut;
+    const order = await this.orderRepo.findById(id);
 
-      if (statut === 'livree_payee') {
-        order.date_statut_livree = new Date();
-        order.frais_livraison = frais_livraison || 1000;
-        order.service_livraison_id = service_livraison_id || null;
-
-        if (order.commission_commercial === 0) {
-          order.commission_commercial = await this.commissionService.calculerCommission(order);
-        }
-
-        if (service_livraison_id) {
-          const { StockLivraison } = require('../../models/StockLivraison');
-          const stockLivraison = await StockLivraison.findOne({
-            where: { service_id: service_livraison_id, product_id: order.product_id }
-          });
-          if (stockLivraison && stockLivraison.quantite >= order.quantite) {
-            stockLivraison.quantite -= order.quantite;
-            await stockLivraison.save();
-          }
-        }
-
-        // Notification
-        try {
-          const { NotificationService } = require('../../services/NotificationService');
-          const notifService = new NotificationService();
-          const commercial = await User.findByPk(order.commercial_id, { attributes: ['nom'] });
-          await notifService.sendToUser(order.commercial_id, '✅ Commande livrée',
-            `Votre commande pour ${order.client_nom} a été livrée. Commission: ${order.commission_commercial} FCFA`);
-          
-          const adminsManagers = await User.findAll({
-            where: { role: { [Op.in]: ['admin', 'manager'] }, actif: true, id: { [Op.ne]: (req as any).utilisateur.id } },
-            attributes: ['id']
-          });
-          for (const a of adminsManagers) {
-            await notifService.sendToUser(a.id, '✅ Commande livrée', `${commercial?.nom} - commande pour ${order.client_nom} livrée.`);
-          }
-        } catch (notifErr) { console.error('Erreur notification validation:', notifErr); }
-      }
-
-      if (statut === 'annulee') {
-        if (order.date_statut_livree) {
-          const uneHeure = 60 * 60 * 1000;
-          const tempsEcoule = Date.now() - new Date(order.date_statut_livree).getTime();
-          if (tempsEcoule > uneHeure) {
-            return this.badRequest(res, "Délai d'annulation dépassé (1h après validation).");
-          }
-        }
-
-        if (statutActuel === 'livree_payee' && order.service_livraison_id) {
-          const { StockLivraison } = require('../../models/StockLivraison');
-          const stockLivraison = await StockLivraison.findOne({
-            where: { service_id: order.service_livraison_id, product_id: order.product_id }
-          });
-          if (stockLivraison) {
-            stockLivraison.quantite += order.quantite;
-            await stockLivraison.save();
-          }
-        }
-
-        order.motif_annulation = req.body.motif || null;
-
-        // Notification
-        try {
-          const { NotificationService } = require('../../services/NotificationService');
-          const notifService = new NotificationService();
-          await notifService.sendToUser(order.commercial_id, '❌ Commande annulée',
-            `Votre commande a été annulée. Motif: ${order.motif_annulation || 'Non spécifié'}`);
-        } catch (notifErr) { console.error('Erreur notification annulation:', notifErr); }
-      }
-
-      order.statut = statut;
-      await order.save();
-
-      const { ServiceLivraison } = require('../../models/ServiceLivraison');
-      const orderWithService = await Order.findByPk(id, {
-        include: [
-          { model: Product, as: 'produit' },
-          { model: User, as: 'commercial', attributes: ['id', 'nom'] },
-          { model: ServiceLivraison, as: 'service_livraison' }
-        ]
-      });
-
-      this.success(res, orderWithService);
-    } catch (err: any) {
-      console.error('updateStatut erreur:', err.message);
-      this.error(res, 'Erreur lors de la modification');
+    if (!order) {
+      console.log("❌ Commande introuvable");
+      return this.notFound(res, "Commande non trouvée");
     }
-  };
+
+    console.log("📦 Commande trouvée");
+    console.log({
+      id: order.id,
+      statut: order.statut,
+      client: order.client_nom,
+      cloture: order.cloture_id
+    });
+
+    if (order.cloture_id)
+      return this.badRequest(res, "Commande clôturée");
+
+    const statutActuel = order.statut;
+
+    console.log("Statut actuel :", statutActuel);
+    console.log("Nouveau statut :", statut);
+
+    if (statut === "livree_payee") {
+
+      console.log("➡️ Traitement livraison");
+
+      order.date_statut_livree = new Date();
+      order.frais_livraison = frais_livraison || 1000;
+      order.service_livraison_id = service_livraison_id || null;
+
+      if (order.commission_commercial === 0) {
+        order.commission_commercial =
+          await this.commissionService.calculerCommission(order);
+
+        console.log(
+          "💰 Commission calculée :",
+          order.commission_commercial
+        );
+      }
+
+      if (service_livraison_id) {
+
+        console.log("📦 Mise à jour stock livraison");
+
+        const { StockLivraison } = require("../../models/StockLivraison");
+
+        const stockLivraison = await StockLivraison.findOne({
+          where: {
+            service_id: service_livraison_id,
+            product_id: order.product_id
+          }
+        });
+
+        if (stockLivraison) {
+
+          console.log(
+            "Stock avant :",
+            stockLivraison.quantite
+          );
+
+          if (stockLivraison.quantite >= order.quantite) {
+
+            stockLivraison.quantite -= order.quantite;
+
+            await stockLivraison.save();
+
+            console.log(
+              "Stock après :",
+              stockLivraison.quantite
+            );
+          }
+        }
+      }
+    }
+
+    if (statut === "annulee") {
+
+      console.log("➡️ Traitement annulation");
+
+      if (order.date_statut_livree) {
+
+        const uneHeure = 60 * 60 * 1000;
+
+        const tempsEcoule =
+          Date.now() -
+          new Date(order.date_statut_livree).getTime();
+
+        if (tempsEcoule > uneHeure) {
+          return this.badRequest(
+            res,
+            "Délai d'annulation dépassé"
+          );
+        }
+      }
+
+      order.motif_annulation = req.body.motif || null;
+    }
+
+    console.log("========== AVANT SAVE ==========");
+    console.log({
+      statutAvantSave: order.statut
+    });
+
+    order.statut = statut;
+
+    console.log({
+      statutApresModification: order.statut
+    });
+
+    await order.save();
+
+    console.log("✅ save() terminé");
+
+    const verification = await Order.findByPk(id);
+
+    console.log("========== VERIFICATION DB ==========");
+    console.log({
+      statutEnBase: verification?.statut
+    });
+
+    const { ServiceLivraison } = require("../../models/ServiceLivraison");
+
+    const orderWithService = await Order.findByPk(id, {
+      include: [
+        {
+          model: Product,
+          as: "produit"
+        },
+        {
+          model: User,
+          as: "commercial",
+          attributes: ["id", "nom"]
+        },
+        {
+          model: ServiceLivraison,
+          as: "service_livraison"
+        }
+      ]
+    });
+
+    console.log("======================================");
+
+    this.success(res, orderWithService);
+
+  } catch (err: any) {
+    console.error("❌ updateStatut :", err);
+    this.error(res, "Erreur lors de la modification");
+  }
+};
 }
