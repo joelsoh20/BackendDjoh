@@ -38,10 +38,10 @@ Order.init({
   service_livraison_id: { type: DataTypes.UUID, allowNull: true },
   group_id: { type: DataTypes.UUID, allowNull: true },
   motif_annulation: { type: DataTypes.TEXT, allowNull: true },
-  statut: {
-    type: DataTypes.ENUM('recue', 'livree_payee', 'annulee'),
-    defaultValue: 'recue'
-  },
+ statut: {
+  type: DataTypes.ENUM('recue', 'validee', 'livree_payee', 'annulee'),
+  defaultValue: 'recue'
+},
   commission_commercial: { type: DataTypes.DECIMAL(10, 2), defaultValue: 0 },
   date_statut_livree: { type: DataTypes.DATE, allowNull: true },
   cloture_id: { type: DataTypes.UUID, allowNull: true }

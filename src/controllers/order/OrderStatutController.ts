@@ -18,26 +18,11 @@ export class OrderStatutController extends OrderController {
   try {
     const id = req.params.id as string;
     const { statut, frais_livraison, service_livraison_id } = req.body;
-
-    console.log("======================================");
-    console.log("🚀 UPDATE STATUT");
-    console.log("ID :", id);
-    console.log("Statut demandé :", statut);
-
     const order = await this.orderRepo.findById(id);
 
     if (!order) {
-      console.log("❌ Commande introuvable");
       return this.notFound(res, "Commande non trouvée");
     }
-
-    console.log("📦 Commande trouvée");
-    console.log({
-      id: order.id,
-      statut: order.statut,
-      client: order.client_nom,
-      cloture: order.cloture_id
-    });
 
     if (order.cloture_id)
       return this.badRequest(res, "Commande clôturée");

@@ -13,7 +13,7 @@ export class AuthController extends BaseController {
   login = async (req: Request, res: Response): Promise<void> => {
   try {
     // 🔍 LOGS DE DEBUG
-    console.log('📦 Corps brut reçu:', req.body);
+    //console.log('📦 Corps brut reçu:', req.body);
     //console.log('📦 Headers Content-Type:', req.headers['content-type']);
     //console.log('📦 Clés dans le corps:', Object.keys(req.body || {}));
     
