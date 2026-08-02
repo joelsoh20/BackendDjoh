@@ -79,8 +79,13 @@ async function main() {
   await CommandeLigne.sync();
   console.log('✅ Tables "commandes" et "commande_lignes" prêtes');
 
-  // 3. Ajouter la colonne commande_id à order_comments si absente
+  // 3. Ajouter la colonne commande_id à order_comments si absente, et
+  //    relâcher la contrainte NOT NULL sur l'ancienne colonne order_id
+  //    (plus jamais renseignée par le nouveau code — sinon tout nouvel
+  //    INSERT échoue avec "null value in column order_id violates
+  //    not-null constraint").
   await sequelize.query(`ALTER TABLE order_comments ADD COLUMN IF NOT EXISTS commande_id UUID;`);
+  await sequelize.query(`ALTER TABLE order_comments ALTER COLUMN order_id DROP NOT NULL;`);
 
   // 4. Charger toutes les anciennes lignes "orders"
   const rows = await sequelize.query<OldOrderRow>(

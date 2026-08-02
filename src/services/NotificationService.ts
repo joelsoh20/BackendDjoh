@@ -46,6 +46,7 @@ export class NotificationService {
    */
   private async envoyerMessages(messages: ExpoPushMessage[]): Promise<void> {
     if (messages.length === 0) return;
+    console.log(`🔔 [envoyerMessages] envoi de ${messages.length} message(s) à Expo :`, JSON.stringify(messages.map(m => ({ to: m.to, title: m.title }))));
 
     const chunks = this.expo.chunkPushNotifications(messages);
     const tickets: ExpoPushTicket[] = [];
@@ -53,6 +54,7 @@ export class NotificationService {
     for (const chunk of chunks) {
       try {
         const ticketChunk = await this.expo.sendPushNotificationsAsync(chunk);
+        console.log('🔔 [envoyerMessages] tickets reçus d\'Expo :', JSON.stringify(ticketChunk));
         tickets.push(...ticketChunk);
       } catch (error) {
         console.error('❌ Erreur d\'envoi (appel Expo) :', error);
@@ -99,17 +101,24 @@ export class NotificationService {
    * 🔔 Envoyer une notification à un utilisateur spécifique
    */
   async sendToUser(userId: string, title: string, body: string, data: any = {}): Promise<void> {
+    console.log(`🔔 [sendToUser] appelé — userId=${userId}, titre="${title}"`);
     try {
       const tokens = await NotificationToken.findAll({ where: { user_id: userId } });
+      console.log(`🔔 [sendToUser] ${tokens.length} token(s) en base pour cet utilisateur`);
 
       if (tokens.length === 0) {
-        console.log(`⚠️ Aucun token trouvé pour l'utilisateur ${userId}`);
+        console.log(`⚠️ Aucun token trouvé pour l'utilisateur ${userId} — il n'a probablement jamais accepté les notifications ou l'enregistrement du token a échoué côté app`);
         return;
       }
 
       const messages: ExpoPushMessage[] = tokens
         .filter(t => Expo.isExpoPushToken(t.token))
         .map(t => ({ to: t.token, sound: 'default', title, body, data }));
+
+      const invalides = tokens.filter(t => !Expo.isExpoPushToken(t.token));
+      if (invalides.length > 0) {
+        console.log(`⚠️ ${invalides.length} token(s) mal formé(s) ignoré(s) : ${invalides.map(t => t.token).join(', ')}`);
+      }
 
       if (messages.length === 0) {
         console.log(`⚠️ Aucun token Expo valide pour l'utilisateur ${userId}`);
