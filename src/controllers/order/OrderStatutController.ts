@@ -69,21 +69,50 @@ export class OrderStatutController extends OrderController {
       if (statut === 'annulee') {
         commande.motif_annulation = req.body.motif || null;
 
-        // Si la commande était déjà livrée, on annule après coup pour
-        // corriger une erreur : on restitue le stock au service de
-        // livraison concerné (admin/manager uniquement, route protégée —
-        // pas de limite de temps).
-        if (statutOriginal === 'livree_payee' && commande.service_livraison_id) {
-          for (const ligne of lignes) {
-            const stockLivraison = await StockLivraison.findOne({
-              where: { service_id: commande.service_livraison_id, product_id: ligne.product_id },
-              transaction
-            });
-            if (stockLivraison) {
-              stockLivraison.quantite += ligne.quantite;
-              await stockLivraison.save({ transaction });
+        // Si la commande était déjà livrée, "annuler" ici signifie
+        // corriger une erreur : elle repart à l'état "validée" pour être
+        // retraitée (pas "annulée" définitivement). Le stock est restitué
+        // au service de livraison concerné (admin/manager uniquement,
+        // route protégée — pas de limite de temps).
+        if (statutOriginal === 'livree_payee') {
+          if (commande.service_livraison_id) {
+            for (const ligne of lignes) {
+              const stockLivraison = await StockLivraison.findOne({
+                where: { service_id: commande.service_livraison_id, product_id: ligne.product_id },
+                transaction
+              });
+              if (stockLivraison) {
+                stockLivraison.quantite += ligne.quantite;
+                await stockLivraison.save({ transaction });
+              }
             }
           }
+          commande.statut = 'validee';
+          await commande.save({ transaction });
+          await transaction.commit();
+
+          const commandeRevertee = await Commande.findByPk(id, {
+            include: [
+              { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
+              { model: User, as: 'commercial', attributes: ['id', 'nom'] },
+              { model: ServiceLivraison, as: 'service_livraison' }
+            ]
+          });
+
+          try {
+            const { NotificationService } = require('../../services/NotificationService');
+            const notifService = new NotificationService();
+            const motifTexte = commande.motif_annulation ? ` Motif : ${commande.motif_annulation}` : '';
+            await notifService.sendToUser(
+              commande.commercial_id,
+              '⚠️ Livraison annulée',
+              `La livraison de votre commande pour ${commande.client_nom} a été annulée et remise en attente de retraitement.${motifTexte}`
+            );
+          } catch (notifErr) {
+            console.error('Erreur notification statut:', notifErr);
+          }
+
+          return this.success(res, commandeRevertee);
         }
       }
 
@@ -113,14 +142,6 @@ export class OrderStatutController extends OrderController {
             commande.commercial_id,
             '✅ Commande livrée',
             `Votre commande pour ${commande.client_nom} a été livrée. Commission: ${commande.commission_commercial} FCFA`
-          );
-        }
-        if (statut === 'annulee' && statutOriginal === 'livree_payee') {
-          const motif = commande.motif_annulation ? ` Motif : ${commande.motif_annulation}` : '';
-          await notifService.sendToUser(
-            commande.commercial_id,
-            '❌ Commande annulée',
-            `Votre commande livrée pour ${commande.client_nom} a été annulée.${motif}`
           );
         }
       } catch (notifErr) {

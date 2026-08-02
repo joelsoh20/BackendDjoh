@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'manager' | 'commercial';
-export type StatutCommande = 'recue' | 'livree_payee' | 'annulee';
+export type StatutCommande = 'recue' | 'validee' | 'livree_payee' | 'annulee';
 export type TypeCharge = 'publicite' | 'echantillon';
 export type CommissionMode = 'forfaitaire' | 'par_produit';
 export type ActionCommandesEnAttente = 'annulees' | 'reportees';

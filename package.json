@@ -6,7 +6,9 @@
     "dev": "nodemon --exec npx tsx src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
-    "migrate:commandes": "tsx src/scripts/migrateCommandes.ts"
+    "migrate:commandes": "tsx src/scripts/migrateCommandes.ts",
+    "check:push-receipts": "tsx src/scripts/checkPushReceipts.ts",
+    "recalculer:commissions": "tsx src/scripts/recalculerCommissions.ts"
   },
   "keywords": [],
   "author": "",
