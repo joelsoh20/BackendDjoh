@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import { OrderController } from './OrderController';
 import { CommissionService } from '../../services/CommissionService';
-import { Order } from '../../models/Order';
+import { Commande } from '../../models/Commande';
+import { CommandeLigne } from '../../models/CommandeLigne';
 import { Product } from '../../models/Product';
 import { User } from '../../models/User';
-import { Op } from 'sequelize';
+import { ServiceLivraison } from '../../models/ServiceLivraison';
+import { StockLivraison } from '../../models/StockLivraison';
+import { Database } from '../../config/database';
 
 export class OrderStatutController extends OrderController {
   private commissionService: CommissionService;
@@ -15,148 +18,120 @@ export class OrderStatutController extends OrderController {
   }
 
   updateStatut = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const id = req.params.id as string;
-    const { statut, frais_livraison, service_livraison_id } = req.body;
-    const order = await this.orderRepo.findById(id);
+    const sequelize = Database.getInstance();
+    const transaction = await sequelize.transaction();
+    try {
+      const id = req.params.id as string;
+      const { statut, frais_livraison, service_livraison_id } = req.body;
+      const commande = await Commande.findByPk(id, {
+        include: [{ model: CommandeLigne, as: 'lignes' }],
+        transaction
+      });
 
-    if (!order) {
-      return this.notFound(res, "Commande non trouvée");
-    }
-
-    if (order.cloture_id)
-      return this.badRequest(res, "Commande clôturée");
-
-    const statutActuel = order.statut;
-
-    console.log("Statut actuel :", statutActuel);
-    console.log("Nouveau statut :", statut);
-
-    if (statut === "livree_payee") {
-
-      console.log("➡️ Traitement livraison");
-
-      order.date_statut_livree = new Date();
-      order.frais_livraison = frais_livraison || 1000;
-      order.service_livraison_id = service_livraison_id || null;
-
-      if (order.commission_commercial === 0) {
-        order.commission_commercial =
-          await this.commissionService.calculerCommission(order);
-
-        console.log(
-          "💰 Commission calculée :",
-          order.commission_commercial
-        );
+      if (!commande) {
+        await transaction.rollback();
+        return this.notFound(res, 'Commande non trouvée');
       }
 
-      if (service_livraison_id) {
+      if (commande.cloture_id) {
+        await transaction.rollback();
+        return this.badRequest(res, 'Commande clôturée');
+      }
 
-        console.log("📦 Mise à jour stock livraison");
+      const lignes = (commande as any).lignes as CommandeLigne[];
+      const statutOriginal = commande.statut;
 
-        const { StockLivraison } = require("../../models/StockLivraison");
+      if (statut === 'livree_payee') {
+        commande.date_statut_livree = new Date();
+        commande.frais_livraison = frais_livraison || 1000;
+        commande.service_livraison_id = service_livraison_id || null;
 
-        const stockLivraison = await StockLivraison.findOne({
-          where: {
-            service_id: service_livraison_id,
-            product_id: order.product_id
-          }
-        });
+        // Commission calculée UNE SEULE FOIS pour toute la commande
+        if (Number(commande.commission_commercial) === 0) {
+          commande.commission_commercial = await this.commissionService.calculerCommission(commande, lignes);
+        }
 
-        if (stockLivraison) {
-
-          console.log(
-            "Stock avant :",
-            stockLivraison.quantite
-          );
-
-          if (stockLivraison.quantite >= order.quantite) {
-
-            stockLivraison.quantite -= order.quantite;
-
-            await stockLivraison.save();
-
-            console.log(
-              "Stock après :",
-              stockLivraison.quantite
-            );
+        // Décrémente le stock du service de livraison pour chaque produit de la commande
+        if (service_livraison_id) {
+          for (const ligne of lignes) {
+            const stockLivraison = await StockLivraison.findOne({
+              where: { service_id: service_livraison_id, product_id: ligne.product_id },
+              transaction
+            });
+            if (stockLivraison && stockLivraison.quantite >= ligne.quantite) {
+              stockLivraison.quantite -= ligne.quantite;
+              await stockLivraison.save({ transaction });
+            }
           }
         }
       }
-    }
 
-    if (statut === "annulee") {
+      if (statut === 'annulee') {
+        commande.motif_annulation = req.body.motif || null;
 
-      console.log("➡️ Traitement annulation");
-
-      if (order.date_statut_livree) {
-
-        const uneHeure = 60 * 60 * 1000;
-
-        const tempsEcoule =
-          Date.now() -
-          new Date(order.date_statut_livree).getTime();
-
-        if (tempsEcoule > uneHeure) {
-          return this.badRequest(
-            res,
-            "Délai d'annulation dépassé"
-          );
+        // Si la commande était déjà livrée, on annule après coup pour
+        // corriger une erreur : on restitue le stock au service de
+        // livraison concerné (admin/manager uniquement, route protégée —
+        // pas de limite de temps).
+        if (statutOriginal === 'livree_payee' && commande.service_livraison_id) {
+          for (const ligne of lignes) {
+            const stockLivraison = await StockLivraison.findOne({
+              where: { service_id: commande.service_livraison_id, product_id: ligne.product_id },
+              transaction
+            });
+            if (stockLivraison) {
+              stockLivraison.quantite += ligne.quantite;
+              await stockLivraison.save({ transaction });
+            }
+          }
         }
       }
 
-      order.motif_annulation = req.body.motif || null;
-    }
+      commande.statut = statut;
+      await commande.save({ transaction });
+      await transaction.commit();
 
-    console.log("========== AVANT SAVE ==========");
-    console.log({
-      statutAvantSave: order.statut
-    });
+      const commandeAvecRelations = await Commande.findByPk(id, {
+        include: [
+          { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
+          { model: User, as: 'commercial', attributes: ['id', 'nom'] },
+          { model: ServiceLivraison, as: 'service_livraison' }
+        ]
+      });
 
-    order.statut = statut;
-
-    console.log({
-      statutApresModification: order.statut
-    });
-
-    await order.save();
-
-    console.log("✅ save() terminé");
-
-    const verification = await Order.findByPk(id);
-
-    console.log("========== VERIFICATION DB ==========");
-    console.log({
-      statutEnBase: verification?.statut
-    });
-
-    const { ServiceLivraison } = require("../../models/ServiceLivraison");
-
-    const orderWithService = await Order.findByPk(id, {
-      include: [
-        {
-          model: Product,
-          as: "produit"
-        },
-        {
-          model: User,
-          as: "commercial",
-          attributes: ["id", "nom"]
-        },
-        {
-          model: ServiceLivraison,
-          as: "service_livraison"
+      // Notifications (après commit)
+      try {
+        const { NotificationService } = require('../../services/NotificationService');
+        const notifService = new NotificationService();
+        if (statut === 'livree_payee') {
+          const admins = await User.findAll({ where: { role: 'admin' as any, actif: true }, attributes: ['id'] });
+          const commercial = (commandeAvecRelations as any)?.commercial;
+          for (const a of admins) {
+            await notifService.sendToUser(a.id, '✅ Commande livrée', `${commercial?.nom} - commande pour ${commande.client_nom} livrée.`);
+          }
+          await notifService.sendToUser(
+            commande.commercial_id,
+            '✅ Commande livrée',
+            `Votre commande pour ${commande.client_nom} a été livrée. Commission: ${commande.commission_commercial} FCFA`
+          );
         }
-      ]
-    });
+        if (statut === 'annulee' && statutOriginal === 'livree_payee') {
+          const motif = commande.motif_annulation ? ` Motif : ${commande.motif_annulation}` : '';
+          await notifService.sendToUser(
+            commande.commercial_id,
+            '❌ Commande annulée',
+            `Votre commande livrée pour ${commande.client_nom} a été annulée.${motif}`
+          );
+        }
+      } catch (notifErr) {
+        console.error('Erreur notification statut:', notifErr);
+      }
 
-    console.log("======================================");
-
-    this.success(res, orderWithService);
-
-  } catch (err: any) {
-    console.error("❌ updateStatut :", err);
-    this.error(res, "Erreur lors de la modification");
-  }
-};
+      this.success(res, commandeAvecRelations);
+    } catch (err: any) {
+      await transaction.rollback();
+      console.error('❌ updateStatut :', err);
+      this.error(res, 'Erreur lors de la modification');
+    }
+  };
 }

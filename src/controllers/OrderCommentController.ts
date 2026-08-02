@@ -2,26 +2,26 @@ import { Request, Response } from 'express';
 import { BaseController } from './BaseController';
 import { OrderComment } from '../models/OrderComment';
 import { User } from '../models/User';
-import { Order } from '../models/Order';
+import { Commande } from '../models/Commande';
 import { Op } from 'sequelize';
 
 export class OrderCommentController extends BaseController {
 
   // Lister les commentaires d'une commande
   getByOrder = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const orderId = req.params.orderId as string;
-    const comments = await OrderComment.findAll({
-      where: { order_id: orderId },
-      include: [{ model: User, as: 'User', attributes: ['id', 'nom', 'role'] }],
-      order: [['date_creation', 'ASC']],
-    });
-    this.success(res, comments);
-  } catch (err: any) {
-    console.error('Erreur getByOrder:', err.message); // ← ajouté pour debug
-    this.error(res, 'Erreur lors de la récupération des commentaires');
-  }
-};
+    try {
+      const commandeId = req.params.orderId as string;
+      const comments = await OrderComment.findAll({
+        where: { commande_id: commandeId },
+        include: [{ model: User, as: 'User', attributes: ['id', 'nom', 'role'] }],
+        order: [['date_creation', 'ASC']],
+      });
+      this.success(res, comments);
+    } catch (err: any) {
+      console.error('Erreur getByOrder:', err.message);
+      this.error(res, 'Erreur lors de la récupération des commentaires');
+    }
+  };
 
   // Ajouter un commentaire
   add = async (req: Request, res: Response): Promise<void> => {
@@ -32,17 +32,17 @@ export class OrderCommentController extends BaseController {
         return this.badRequest(res, 'Commande et message requis');
       }
 
-      const order = await Order.findByPk(order_id, {
+      const commande = await Commande.findByPk(order_id, {
         include: [{ model: User, as: 'commercial', attributes: ['id', 'nom'] }]
       });
-      if (!order) return this.notFound(res, 'Commande non trouvée');
+      if (!commande) return this.notFound(res, 'Commande non trouvée');
 
-      if (user.role === 'commercial' && order.commercial_id !== user.id) {
+      if (user.role === 'commercial' && commande.commercial_id !== user.id) {
         return this.forbidden(res, 'Vous ne pouvez commenter que vos propres commandes');
       }
 
       const comment = await OrderComment.create({
-        order_id,
+        commande_id: order_id,
         user_id: user.id,
         message: message.trim(),
       });
@@ -60,13 +60,13 @@ export class OrderCommentController extends BaseController {
           for (const r of recipients) {
             await notifService.sendToUser(r.id,
               '💬 Nouveau commentaire',
-              `${authorName} a commenté sa commande pour ${order.client_nom}`
+              `${authorName} a commenté sa commande pour ${commande.client_nom}`
             );
           }
         } else {
-          await notifService.sendToUser(order.commercial_id,
+          await notifService.sendToUser(commande.commercial_id,
             '💬 Nouveau commentaire',
-            `${authorName} a commenté votre commande pour ${order.client_nom}`
+            `${authorName} a commenté votre commande pour ${commande.client_nom}`
           );
         }
       } catch (notifErr) {

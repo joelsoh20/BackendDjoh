@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import path from 'path';
 import { Database } from './config/database';
 import { setupAssociations } from './config/associations';
 import routes from './routes';
@@ -14,6 +15,7 @@ export class App {
 
   constructor() {
     this.app = express();
+    this.app.set('trust proxy', 1);
     this.setupMiddlewares();
     this.setupRoutes();
     this.setupErrorHandler();
@@ -40,6 +42,9 @@ export class App {
   // 2. IMPORTANT : Parseur JSON AVANT les routes
   this.app.use(express.json());
   this.app.use(express.urlencoded({ extended: true }));
+
+  // 3. Fichiers exportés (FEC/PDF/Balance) téléchargeables directement
+  this.app.use('/exports', express.static(path.join(__dirname, '../exports')));
 }
 
   private setupRoutes(): void {

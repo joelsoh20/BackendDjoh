@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { BaseController } from './BaseController';
 import { UserRepository } from '../repositories/UserRepository';
+import { ProductCommission } from '../models/ProductCommission';
+import { Product } from '../models/Product';
 
 export class UserController extends BaseController {
   private userRepo: UserRepository;
@@ -13,7 +15,8 @@ export class UserController extends BaseController {
   getAll = async (req: Request, res: Response): Promise<void> => {
     try {
       const users = await this.userRepo.findAll({
-        attributes: { exclude: ['mot_de_passe'] }
+        attributes: { exclude: ['mot_de_passe'] },
+        include: [{ model: ProductCommission, as: 'commissions_produits', include: [{ model: Product, as: 'produit' }] }]
       });
       this.success(res, users);
     } catch (err) {
@@ -24,7 +27,8 @@ export class UserController extends BaseController {
   getById = async (req: Request, res: Response): Promise<void> => {
     try {
       const user = await this.userRepo.findById(req.params.id as string, {
-        attributes: { exclude: ['mot_de_passe'] }
+        attributes: { exclude: ['mot_de_passe'] },
+        include: [{ model: ProductCommission, as: 'commissions_produits', include: [{ model: Product, as: 'produit' }] }]
       });
       if (!user) return this.notFound(res, 'Utilisateur non trouvé');
       this.success(res, user);
@@ -117,6 +121,53 @@ create = async (req: Request, res: Response): Promise<void> => {
       this.success(res, null, 'Mot de passe modifié');
     } catch (err) {
       this.error(res, 'Erreur lors de la modification');
+    }
+  };
+
+  /**
+   * Définit (ou met à jour) la commission d'un commercial pour un produit
+   * spécifique, utilisée quand son commission_mode est "par_produit".
+   */
+  addCommissionProduit = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userId } = req.params;
+      const { product_id, montant } = req.body;
+
+      if (!product_id || montant === undefined || montant === null) {
+        return this.badRequest(res, 'Produit et montant requis');
+      }
+
+      const user = await this.userRepo.findById(userId as string);
+      if (!user) return this.notFound(res, 'Utilisateur non trouvé');
+
+      const [commission, created] = await ProductCommission.findOrCreate({
+        where: { user_id: userId, product_id },
+        defaults: { user_id: userId, product_id, montant }
+      });
+
+      if (!created && Number(commission.montant) !== Number(montant)) {
+        commission.montant = montant;
+        await commission.save();
+      }
+
+      const complet = await ProductCommission.findByPk(commission.id, {
+        include: [{ model: Product, as: 'produit' }]
+      });
+      this.success(res, complet, 'Commission produit enregistrée');
+    } catch (err: any) {
+      console.error('Erreur addCommissionProduit:', err.message);
+      this.error(res, 'Erreur lors de l\'enregistrement de la commission');
+    }
+  };
+
+  removeCommissionProduit = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userId, productId } = req.params;
+      await ProductCommission.destroy({ where: { user_id: userId, product_id: productId } });
+      this.success(res, null, 'Commission produit supprimée');
+    } catch (err: any) {
+      console.error('Erreur removeCommissionProduit:', err.message);
+      this.error(res, 'Erreur lors de la suppression de la commission');
     }
   };
 }

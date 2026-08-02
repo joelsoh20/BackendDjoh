@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { OrderController } from './OrderController';
-import { Order } from '../../models/Order';
+import { Commande } from '../../models/Commande';
+import { CommandeLigne } from '../../models/CommandeLigne';
 import { StockLivraison } from '../../models/StockLivraison';
+import { Database } from '../../config/database';
 
 export class OrderLivraisonController extends OrderController {
 
@@ -30,37 +32,54 @@ export class OrderLivraisonController extends OrderController {
     }
   }
 
-  // Assigner un service de livraison à une commande
+  // Assigner un service de livraison à une commande (tous ses produits)
   assignerServiceLivraison = async (req: Request, res: Response): Promise<void> => {
+    const sequelize = Database.getInstance();
+    const transaction = await sequelize.transaction();
     try {
       const { orderId, serviceLivraisonId } = req.body;
       const userRole = (req as any).utilisateur.role;
 
       if (userRole !== 'manager' && userRole !== 'admin') {
+        await transaction.rollback();
         return this.forbidden(res, 'Seul un manager ou admin peut assigner un service de livraison');
       }
 
-      const order = await Order.findByPk(orderId);
-      if (!order) return this.notFound(res, 'Commande non trouvée');
-
-      const verification = await this.verifierStockServiceLivraison(
-        order.product_id, order.quantite, serviceLivraisonId
-      );
-
-      if (!verification.valid) {
-        return this.badRequest(res, verification.message!);
+      const commande = await Commande.findByPk(orderId, {
+        include: [{ model: CommandeLigne, as: 'lignes' }],
+        transaction
+      });
+      if (!commande) {
+        await transaction.rollback();
+        return this.notFound(res, 'Commande non trouvée');
       }
 
-      order.service_livraison_id = serviceLivraisonId;
-      await order.save();
+      const lignes = (commande as any).lignes as CommandeLigne[];
 
-      await StockLivraison.decrement(
-        { quantite: order.quantite },
-        { where: { service_id: serviceLivraisonId, product_id: order.product_id } }
-      );
+      for (const ligne of lignes) {
+        const verification = await this.verifierStockServiceLivraison(
+          ligne.product_id, ligne.quantite, serviceLivraisonId
+        );
+        if (!verification.valid) {
+          await transaction.rollback();
+          return this.badRequest(res, `${verification.message} (produit concerné dans la commande)`);
+        }
+      }
 
-      this.success(res, order, '✅ Service de livraison assigné avec succès');
+      commande.service_livraison_id = serviceLivraisonId;
+      await commande.save({ transaction });
+
+      for (const ligne of lignes) {
+        await StockLivraison.decrement(
+          { quantite: ligne.quantite },
+          { where: { service_id: serviceLivraisonId, product_id: ligne.product_id }, transaction }
+        );
+      }
+
+      await transaction.commit();
+      this.success(res, commande, '✅ Service de livraison assigné avec succès');
     } catch (error) {
+      await transaction.rollback();
       console.error('❌ Erreur assignation:', error);
       this.error(res, 'Erreur lors de l\'assignation');
     }

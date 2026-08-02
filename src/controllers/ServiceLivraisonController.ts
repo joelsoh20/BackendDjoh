@@ -5,6 +5,8 @@ import { StockLivraison } from '../models/StockLivraison';
 import { Stock } from '../models/Stock';
 import { Product } from '../models/Product';
 import { User } from '../models/User';
+import { Commande } from '../models/Commande';
+import { CommandeLigne } from '../models/CommandeLigne';
 import { Op } from 'sequelize';
 
 export class ServiceLivraisonController extends BaseController {
@@ -138,4 +140,165 @@ export class ServiceLivraisonController extends BaseController {
       this.error(res, 'Erreur lors de la suppression');
     }
   };
+
+  /**
+   * Stats par service de livraison : nombre de commandes, valeur des
+   * produits livrés, frais de livraison versés, bénéfice net.
+   * Réservé admin/manager (route protégée par adminOrManager).
+   */
+  getStats = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const periode = (req.query.periode as string) || 'jour';
+      const { debut, fin } = this.getPlagePeriode(periode);
+      const resultat = await this.calculerStatsParService(debut, fin);
+      this.success(res, { periode, debut, fin, services: resultat });
+    } catch (err: any) {
+      console.error('Erreur getStats services livraison:', err.message);
+      this.error(res, 'Erreur lors de la récupération des statistiques');
+    }
+  };
+
+  /**
+   * Stats du jour ET de la veille (utilisé par la page réservée admin :
+   * suivi journalier des encaissements par service de livraison).
+   */
+  getStatsJourHier = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const maintenant = new Date();
+      const debutJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
+      const finJour = new Date(debutJour.getTime() + 24 * 60 * 60 * 1000);
+      const debutHier = new Date(debutJour.getTime() - 24 * 60 * 60 * 1000);
+
+      const [jour, hier] = await Promise.all([
+        this.calculerStatsParService(debutJour, finJour),
+        this.calculerStatsParService(debutHier, debutJour),
+      ]);
+
+      this.success(res, { jour, hier });
+    } catch (err: any) {
+      console.error('Erreur getStatsJourHier services livraison:', err.message);
+      this.error(res, 'Erreur lors de la récupération des statistiques');
+    }
+  };
+
+  private async calculerStatsParService(debut: Date | null, fin: Date | null) {
+    const where: any = { statut: 'livree_payee' };
+    if (debut && fin) {
+      where.date_statut_livree = { [Op.between]: [debut, fin] };
+    }
+
+    const commandes = await Commande.findAll({
+      where,
+      include: [
+        { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
+        { model: ServiceLivraison, as: 'service_livraison', attributes: ['id', 'nom'] }
+      ]
+    });
+
+    const services = await ServiceLivraison.findAll({ attributes: ['id', 'nom', 'actif'] });
+    const parService = new Map<string, {
+      serviceId: string; nom: string; actif: boolean;
+      nombreCommandes: number; nombreProduitsLivres: number; valeurProduitsLivres: number;
+      fraisLivraisonTotal: number; coutRevientTotal: number; commissionTotal: number;
+    }>();
+
+    for (const s of services) {
+      parService.set(s.id, {
+        serviceId: s.id, nom: s.nom, actif: s.actif,
+        nombreCommandes: 0, nombreProduitsLivres: 0, valeurProduitsLivres: 0,
+        fraisLivraisonTotal: 0, coutRevientTotal: 0, commissionTotal: 0
+      });
+    }
+
+    for (const c of commandes) {
+      const service = (c as any).service_livraison;
+      if (!service) continue; // commande pas encore assignée à un service
+
+      if (!parService.has(service.id)) {
+        parService.set(service.id, {
+          serviceId: service.id, nom: service.nom, actif: true,
+          nombreCommandes: 0, nombreProduitsLivres: 0, valeurProduitsLivres: 0,
+          fraisLivraisonTotal: 0, coutRevientTotal: 0, commissionTotal: 0
+        });
+      }
+
+      const entree = parService.get(service.id)!;
+      const lignes = (c as any).lignes as any[];
+      const valeur = (lignes || []).reduce((s, l) => s + Number(l.prix_unitaire_reel) * l.quantite, 0);
+      const coutRevient = (lignes || []).reduce((s, l) => s + (l.produit ? Number(l.produit.cout_revient) * l.quantite : 0), 0);
+      const nbProduits = (lignes || []).reduce((s, l) => s + l.quantite, 0);
+
+      entree.nombreCommandes += 1;
+      entree.nombreProduitsLivres += nbProduits;
+      entree.valeurProduitsLivres += valeur;
+      entree.fraisLivraisonTotal += Number(c.frais_livraison);
+      entree.coutRevientTotal += coutRevient;
+      entree.commissionTotal += Number(c.commission_commercial);
+    }
+
+    return Array.from(parService.values()).map(e => {
+      // Bénéfice net = prix de vente - prix d'achat - frais de livraison - commission
+      const beneficeNet = e.valeurProduitsLivres - e.coutRevientTotal - e.fraisLivraisonTotal - e.commissionTotal;
+      const montantAPercevoir = e.valeurProduitsLivres - e.fraisLivraisonTotal;
+      return {
+        serviceId: e.serviceId,
+        nom: e.nom,
+        actif: e.actif,
+        nombreCommandes: e.nombreCommandes,
+        nombreProduitsLivres: e.nombreProduitsLivres,
+        valeurProduitsLivres: Math.round(e.valeurProduitsLivres),
+        fraisLivraisonTotal: Math.round(e.fraisLivraisonTotal),
+        montantAPercevoir: Math.round(montantAPercevoir),
+        beneficeNet: Math.round(beneficeNet),
+      };
+    }).sort((a, b) => b.valeurProduitsLivres - a.valeurProduitsLivres);
+  }
+
+  /**
+   * Stats d'une date précise choisie par l'admin (calendrier).
+   * GET /services-livraison/stats-jour?date=YYYY-MM-DD
+   */
+  getStatsPourDate = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const dateParam = req.query.date as string;
+      if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        return this.badRequest(res, 'Paramètre date requis au format AAAA-MM-JJ');
+      }
+
+      const [annee, mois, jourNum] = dateParam.split('-').map(Number);
+      const debut = new Date(annee as number, (mois as number) - 1, jourNum);
+      const fin = new Date(debut.getTime() + 24 * 60 * 60 * 1000);
+
+      const services = await this.calculerStatsParService(debut, fin);
+      this.success(res, { date: dateParam, services });
+    } catch (err: any) {
+      console.error('Erreur getStatsPourDate:', err.message);
+      this.error(res, 'Erreur lors de la récupération des statistiques');
+    }
+  };
+
+  private getPlagePeriode(periode: string): { debut: Date | null; fin: Date | null } {
+    const maintenant = new Date();
+    const debutJour = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
+    const finJour = new Date(debutJour.getTime() + 24 * 60 * 60 * 1000);
+
+    switch (periode) {
+      case 'jour':
+        return { debut: debutJour, fin: finJour };
+      case 'semaine': {
+        const debutSemaine = new Date(maintenant);
+        debutSemaine.setDate(maintenant.getDate() - maintenant.getDay());
+        debutSemaine.setHours(0, 0, 0, 0);
+        return { debut: debutSemaine, fin: finJour };
+      }
+      case 'mois': {
+        const debutMois = new Date(maintenant.getFullYear(), maintenant.getMonth(), 1);
+        return { debut: debutMois, fin: finJour };
+      }
+      case 'tout':
+        return { debut: null, fin: null };
+      default:
+        return { debut: debutJour, fin: finJour };
+    }
+  }
 }

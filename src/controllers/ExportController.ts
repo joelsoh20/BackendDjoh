@@ -12,8 +12,8 @@ export class ExportController extends BaseController {
 
   exportFEC = async (req: Request, res: Response): Promise<void> => {
     try {
-      const url = await this.exportService.generateFEC();
-      this.success(res, { url });
+      const relativeUrl = await this.exportService.generateFEC();
+      this.success(res, { url: `${req.protocol}://${req.get('host')}${relativeUrl}` });
     } catch (err) {
       this.error(res, 'Erreur lors de l\'export FEC');
     }
@@ -22,11 +22,11 @@ export class ExportController extends BaseController {
   exportPDF = async (req: Request, res: Response): Promise<void> => {
     try {
       const { mois, annee } = req.query;
-      const url = await this.exportService.generatePDF(
+      const relativeUrl = await this.exportService.generatePDF(
         mois ? parseInt(mois as string) : undefined,
         annee ? parseInt(annee as string) : undefined
       );
-      this.success(res, { url });
+      this.success(res, { url: `${req.protocol}://${req.get('host')}${relativeUrl}` });
     } catch (err) {
       this.error(res, 'Erreur lors de l\'export PDF');
     }
@@ -34,8 +34,8 @@ export class ExportController extends BaseController {
 
   exportBalance = async (req: Request, res: Response): Promise<void> => {
     try {
-      const url = await this.exportService.generateBalance();
-      this.success(res, { url });
+      const relativeUrl = await this.exportService.generateBalance();
+      this.success(res, { url: `${req.protocol}://${req.get('host')}${relativeUrl}` });
     } catch (err) {
       this.error(res, 'Erreur lors de l\'export Balance');
     }

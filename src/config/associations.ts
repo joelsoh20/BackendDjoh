@@ -1,8 +1,9 @@
 import { User } from '../models/User';
 import { Product } from '../models/Product';
 import { ProductCommission } from '../models/ProductCommission';
-import { Order } from '../models/Order';
-import { OrderComment } from '../models/OrderComment'; // ← AJOUTÉ
+import { Commande } from '../models/Commande';
+import { CommandeLigne } from '../models/CommandeLigne';
+import { OrderComment } from '../models/OrderComment';
 import { Charge } from '../models/Charge';
 import { MonthlyClosing } from '../models/MonthlyClosing';
 import { Stock } from '../models/Stock';
@@ -11,40 +12,52 @@ import { ServiceLivraison } from '../models/ServiceLivraison';
 
 
 export const setupAssociations = (): void => {
-  
+
   // ============================================
-  // USER ↔ ORDER
+  // USER ↔ COMMANDE
   // ============================================
-  User.hasMany(Order, {
+  User.hasMany(Commande, {
     foreignKey: { name: 'commercial_id', allowNull: false },
     as: 'commandes'
   });
-  Order.belongsTo(User, {
+  Commande.belongsTo(User, {
     foreignKey: 'commercial_id',
     as: 'commercial'
   });
 
   // ============================================
-  // PRODUCT ↔ ORDER
+  // COMMANDE ↔ COMMANDE_LIGNE
   // ============================================
-  Product.hasMany(Order, {
-    foreignKey: { name: 'product_id', allowNull: false },
-    as: 'commandes'
+  Commande.hasMany(CommandeLigne, {
+    foreignKey: { name: 'commande_id', allowNull: false },
+    as: 'lignes'
   });
-  Order.belongsTo(Product, {
+  CommandeLigne.belongsTo(Commande, {
+    foreignKey: 'commande_id',
+    as: 'commande'
+  });
+
+  // ============================================
+  // PRODUCT ↔ COMMANDE_LIGNE
+  // ============================================
+  Product.hasMany(CommandeLigne, {
+    foreignKey: { name: 'product_id', allowNull: false },
+    as: 'lignes'
+  });
+  CommandeLigne.belongsTo(Product, {
     foreignKey: 'product_id',
     as: 'produit'
   });
 
 
   // ============================================
-  // MONTHLYCLOSING ↔ ORDER
+  // MONTHLYCLOSING ↔ COMMANDE
   // ============================================
-  MonthlyClosing.hasMany(Order, {
+  MonthlyClosing.hasMany(Commande, {
     foreignKey: { name: 'cloture_id', allowNull: true },
     as: 'commandes'
   });
-  Order.belongsTo(MonthlyClosing, {
+  Commande.belongsTo(MonthlyClosing, {
     foreignKey: 'cloture_id',
     as: 'cloture'
   });
@@ -70,19 +83,11 @@ export const setupAssociations = (): void => {
   });
 
   // ============================================
-  // USER ↔ PRODUCT (via ProductCommission) N:N
+  // USER ↔ PRODUCT_COMMISSION (commissions par produit d'un commercial)
   // ============================================
-  User.belongsToMany(Product, {
-    through: ProductCommission,
+  User.hasMany(ProductCommission, {
     foreignKey: 'user_id',
-    otherKey: 'product_id',
     as: 'commissions_produits'
-  });
-  Product.belongsToMany(User, {
-    through: ProductCommission,
-    foreignKey: 'product_id',
-    otherKey: 'user_id',
-    as: 'commerciaux_commission'
   });
 
   ProductCommission.belongsTo(User, {
@@ -98,8 +103,8 @@ export const setupAssociations = (): void => {
   StockLivraison.belongsTo(ServiceLivraison, { foreignKey: 'service_id', as: 'service' });
   StockLivraison.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
 
-  ServiceLivraison.hasMany(Order, { foreignKey: 'service_livraison_id', as: 'commandes' });
-  Order.belongsTo(ServiceLivraison, { foreignKey: 'service_livraison_id', as: 'service_livraison' });
+  ServiceLivraison.hasMany(Commande, { foreignKey: 'service_livraison_id', as: 'commandes' });
+  Commande.belongsTo(ServiceLivraison, { foreignKey: 'service_livraison_id', as: 'service_livraison' });
 
   // ============================================
   // ORDERCOMMENT ↔ USER
@@ -110,14 +115,14 @@ export const setupAssociations = (): void => {
   });
 
   // ============================================
-  // ORDERCOMMENT ↔ ORDER
+  // ORDERCOMMENT ↔ COMMANDE
   // ============================================
-  Order.hasMany(OrderComment, {
-    foreignKey: 'order_id',
+  Commande.hasMany(OrderComment, {
+    foreignKey: 'commande_id',
     as: 'commentaires'
   });
-  OrderComment.belongsTo(Order, {
-    foreignKey: 'order_id',
+  OrderComment.belongsTo(Commande, {
+    foreignKey: 'commande_id',
     as: 'commande'
   });
 

@@ -12,5 +12,7 @@ router.post('/', auth, adminOnly, controller.create);
 router.put('/:id', auth, adminOnly, controller.update);
 router.patch('/:id/toggle-actif', auth, adminOnly, controller.toggleActif);
 router.patch('/:id/mot-de-passe', auth, adminOnly, controller.changerMotDePasse);
+router.post('/:userId/commissions-produits', auth, adminOnly, controller.addCommissionProduit);
+router.delete('/:userId/commissions-produits/:productId', auth, adminOnly, controller.removeCommissionProduit);
 
 export default router;

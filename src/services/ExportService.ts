@@ -1,9 +1,12 @@
-import { Order } from '../models/Order';
+import { Commande } from '../models/Commande';
+import { CommandeLigne } from '../models/CommandeLigne';
 import { Product } from '../models/Product';
 import { User } from '../models/User';
 import { Charge } from '../models/Charge';
 import { MonthlyClosing } from '../models/MonthlyClosing';
+import { ServiceLivraison } from '../models/ServiceLivraison';
 import { Op } from 'sequelize';
+import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 
@@ -18,11 +21,18 @@ export class ExportService {
     }
   }
 
+  private ligneCle(doc: PDFKit.PDFDocument, label: string, valeur: string): void {
+    const y = doc.y;
+    doc.fontSize(10).font('Helvetica').fillColor('#555').text(label, 50, y);
+    doc.font('Helvetica-Bold').fillColor('#000').text(valeur, 300, y);
+    doc.moveDown(0.6);
+  }
+
   async generateFEC(): Promise<string> {
-    const orders = await Order.findAll({
+    const commandes = await Commande.findAll({
       where: { statut: 'livree_payee' },
       include: [
-        { model: Product, as: 'produit' },
+        { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
         { model: User, as: 'commercial', attributes: ['id', 'nom'] }
       ],
       order: [['date_statut_livree', 'ASC']]
@@ -30,12 +40,14 @@ export class ExportService {
 
     let csv = 'Date;Libellé;Débit;Crédit;Type\n';
 
-    for (const order of orders) {
-      const date = order.date_statut_livree?.toISOString().split('T')[0] || '';
-      const libelle = `Vente ${(order as any).produit?.nom || ''} - ${order.client_nom}`;
-      const ca = Number(order.prix_unitaire_reel) * order.quantite;
-
-      csv += `${date};${libelle};;${ca};CA\n`;
+    for (const commande of commandes) {
+      const date = commande.date_statut_livree?.toISOString().split('T')[0] || '';
+      const lignes = (commande as any).lignes as any[];
+      for (const ligne of lignes || []) {
+        const libelle = `Vente ${ligne.produit?.nom || ''} - ${commande.client_nom}`;
+        const ca = Number(ligne.prix_unitaire_reel) * ligne.quantite;
+        csv += `${date};${libelle};;${ca};CA\n`;
+      }
     }
 
     const charges = await Charge.findAll({ order: [['date', 'ASC']] });
@@ -59,67 +71,120 @@ export class ExportService {
       where: { mois: m, annee: a },
       include: [
         { model: User, as: 'cloturePar', attributes: ['nom'] },
-        { model: Order, as: 'commandes', include: ['produit', 'commercial'] }
+        { model: Commande, as: 'commandes', include: [{ model: CommandeLigne, as: 'lignes', include: ['produit'] }, 'commercial'] }
       ]
     });
 
-    // Génération simple d'un fichier texte (remplacer par PDF si besoin)
-    let content = `RAPPORT MENSUEL - ${m}/${a}\n`;
-    content += '='.repeat(40) + '\n\n';
-
-    if (closing) {
-      content += `CA Total : ${Number(closing.ca_total).toLocaleString()} FCFA\n`;
-      content += `Bénéfice Net : ${Number(closing.benefice_net_total).toLocaleString()} FCFA\n`;
-      content += `Clôturé par : ${(closing as any).cloturePar?.nom}\n`;
-      content += `Date clôture : ${closing.date_cloture}\n\n`;
-
-      content += 'COMMISSIONS\n';
-      content += '-'.repeat(40) + '\n';
-      for (const comm of closing.commissions_json as any[]) {
-        content += `${comm.nom} : ${comm.produits_vendus} produits → ${comm.montant_du.toLocaleString()} FCFA\n`;
-      }
-    } else {
-      content += 'Mois non clôturé.\n';
-    }
-
-    const filename = `Rapport_${m}_${a}.txt`;
+    // Génération d'un vrai PDF
+    const filename = `Rapport_${m}_${a}.pdf`;
     const filepath = path.join(this.exportDir, filename);
-    fs.writeFileSync(filepath, content, 'utf-8');
+    const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+    await new Promise<void>((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const stream = fs.createWriteStream(filepath);
+      doc.pipe(stream);
+      stream.on('finish', () => resolve());
+      stream.on('error', reject);
+
+      doc.fontSize(20).font('Helvetica-Bold').text('Rapport mensuel', { align: 'center' });
+      doc.fontSize(14).font('Helvetica').fillColor('#555')
+        .text(`${moisNoms[m - 1]} ${a}`, { align: 'center' });
+      doc.moveDown(1.5);
+      doc.strokeColor('#DDDDDD').moveTo(50, doc.y).lineTo(545, doc.y).stroke();
+      doc.moveDown(1);
+
+      if (closing) {
+        doc.fillColor('#000').fontSize(12).font('Helvetica-Bold').text('Chiffres clés');
+        doc.moveDown(0.5);
+        this.ligneCle(doc, 'Chiffre d\'affaires total', `${Number(closing.ca_total).toLocaleString('fr-FR')} FCFA`);
+        this.ligneCle(doc, 'Bénéfice net', `${Number(closing.benefice_net_total).toLocaleString('fr-FR')} FCFA`);
+        this.ligneCle(doc, 'Clôturé par', (closing as any).cloturePar?.nom || '-');
+        this.ligneCle(doc, 'Date de clôture', new Date(closing.date_cloture).toLocaleDateString('fr-FR'));
+
+        doc.moveDown(1);
+        doc.fontSize(12).font('Helvetica-Bold').text('Commissions par commercial');
+        doc.moveDown(0.5);
+
+        const commissions = (closing.commissions_json as any[]) || [];
+        if (commissions.length === 0) {
+          doc.fontSize(10).font('Helvetica').fillColor('#777').text('Aucune commission ce mois.');
+        } else {
+          const startX = 50;
+          let y = doc.y;
+          doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
+          doc.text('Commercial', startX, y);
+          doc.text('Produits vendus', startX + 250, y);
+          doc.text('Montant dû', startX + 400, y);
+          y += 16;
+          doc.moveTo(startX, y).lineTo(545, y).strokeColor('#DDDDDD').stroke();
+          y += 8;
+
+          doc.font('Helvetica').fillColor('#333');
+          let totalCommissions = 0;
+          for (const comm of commissions) {
+            doc.text(comm.nom || '-', startX, y);
+            doc.text(String(comm.produits_vendus ?? 0), startX + 250, y);
+            doc.text(`${Number(comm.montant_du || 0).toLocaleString('fr-FR')} FCFA`, startX + 400, y);
+            totalCommissions += Number(comm.montant_du || 0);
+            y += 18;
+          }
+          y += 4;
+          doc.moveTo(startX, y).lineTo(545, y).strokeColor('#DDDDDD').stroke();
+          y += 8;
+          doc.font('Helvetica-Bold').fillColor('#000');
+          doc.text('Total', startX + 250, y);
+          doc.text(`${totalCommissions.toLocaleString('fr-FR')} FCFA`, startX + 400, y);
+        }
+      } else {
+        doc.fontSize(12).font('Helvetica').fillColor('#777')
+          .text(`Le mois de ${moisNoms[m - 1]} ${a} n'a pas encore été clôturé.`, { align: 'center' });
+      }
+
+      doc.end();
+    });
 
     return `/exports/${filename}`;
   }
 
+  /**
+   * Solde à payer par commercial (commissions) et par service de
+   * livraison (frais de livraison) sur les commandes livrées.
+   */
   async generateBalance(): Promise<string> {
-    const orderRepo = new (await import('../repositories/OrderRepository')).OrderRepository();
-    const orders = await orderRepo.findAllWithRelations({
-      where: { statut: 'livree_payee' }
+    const commandes = await Commande.findAll({
+      where: { statut: 'livree_payee' },
+      include: [
+        { model: User, as: 'commercial', attributes: ['id', 'nom'] },
+        { model: ServiceLivraison, as: 'service_livraison', attributes: ['id', 'nom'] }
+      ]
     });
 
-    let csv = 'Commercial;Commissions dues;Livreur;Frais dus\n';
+    let csv = 'Commercial;Commissions dues;Service de livraison;Frais dus\n';
 
     const parCommercial: Record<string, number> = {};
-    const parLivreur: Record<string, number> = {};
+    const parServiceLivraison: Record<string, number> = {};
 
-    for (const o of orders) {
-      const com = (o as any).commercial;
-      const liv = (o as any).livreur;
+    for (const c of commandes) {
+      const com = (c as any).commercial;
+      const service = (c as any).service_livraison;
 
       if (com) {
-        parCommercial[com.nom] = (parCommercial[com.nom] || 0) + Number(o.commission_commercial);
+        parCommercial[com.nom] = (parCommercial[com.nom] || 0) + Number(c.commission_commercial);
       }
-      if (liv) {
-        parLivreur[liv.nom] = (parLivreur[liv.nom] || 0) + Number(o.frais_livraison);
+      if (service) {
+        parServiceLivraison[service.nom] = (parServiceLivraison[service.nom] || 0) + Number(c.frais_livraison);
       }
     }
 
     const commerciaux = Object.keys(parCommercial);
-    const livreurs = Object.keys(parLivreur);
-    const max = Math.max(commerciaux.length, livreurs.length);
+    const services = Object.keys(parServiceLivraison);
+    const max = Math.max(commerciaux.length, services.length);
 
     for (let i = 0; i < max; i++) {
       const c = commerciaux[i] || '';
-      const l = livreurs[i] || '';
-      csv += `${c};${parCommercial[c]?.toLocaleString() || ''};${l};${parLivreur[l]?.toLocaleString() || ''}\n`;
+      const s = services[i] || '';
+      csv += `${c};${parCommercial[c]?.toLocaleString() || ''};${s};${parServiceLivraison[s]?.toLocaleString() || ''}\n`;
     }
 
     const filename = `Balance_${new Date().toISOString().split('T')[0]}.csv`;

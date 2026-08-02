@@ -1,5 +1,6 @@
 import { Database } from '../config/database';
-import { Order } from '../models/Order';
+import { Commande } from '../models/Commande';
+import { CommandeLigne } from '../models/CommandeLigne';
 import { Product } from '../models/Product';
 import { User } from '../models/User';
 import { MonthlyClosing } from '../models/MonthlyClosing';
@@ -49,21 +50,21 @@ export class ClosingService {
       const finMois = new Date(annee, mois, 0, 23, 59, 59);
 
       // 2. Commandes livree_payee du mois
-      const commandesLivrees = await Order.findAll({
+      const commandesLivrees = await Commande.findAll({
         where: {
           statut: 'livree_payee',
           date_statut_livree: { [Op.between]: [debutMois, finMois] },
           cloture_id: null
         },
         include: [
-          { model: Product, as: 'produit' },
+          { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
           { model: User, as: 'commercial', attributes: { exclude: ['mot_de_passe'] } }
         ],
         transaction
       });
 
       // 3. Commandes recue en attente
-      const commandesEnAttente = await Order.findAll({
+      const commandesEnAttente = await Commande.findAll({
         where: {
           statut: 'recue',
           date_creation: { [Op.between]: [debutMois, finMois] },
@@ -73,7 +74,7 @@ export class ClosingService {
       });
 
       if (commandesEnAttenteAction === 'annulees') {
-        await Order.update(
+        await Commande.update(
           { statut: 'annulee' },
           { where: { id: commandesEnAttente.map(c => c.id) }, transaction }
         );
@@ -84,18 +85,28 @@ export class ClosingService {
       let beneficeNetTotal = 0;
       const commissionsParCommercial: Record<string, any> = {};
 
-      for (const order of commandesLivrees) {
-        const ca = Number(order.prix_unitaire_reel) * order.quantite;
-        caTotal += ca;
+      for (const commande of commandesLivrees) {
+        const lignes = (commande as any).lignes as any[];
+        let caCommande = 0;
+        let coutRevientCommande = 0;
+        let produitsVendusCommande = 0;
 
-        const produit = (order as any).produit;
-        const coutRevient = produit ? Number(produit.cout_revient) * order.quantite : 0;
-        const frais = Number(order.frais_livraison);
-        const commission = Number(order.commission_commercial);
+        for (const ligne of lignes || []) {
+          const ca = Number(ligne.prix_unitaire_reel) * ligne.quantite;
+          caCommande += ca;
+          produitsVendusCommande += ligne.quantite;
+          const produit = ligne.produit;
+          coutRevientCommande += produit ? Number(produit.cout_revient) * ligne.quantite : 0;
+        }
 
-        beneficeNetTotal += ca - coutRevient - frais - commission;
+        caTotal += caCommande;
 
-        const commercial = (order as any).commercial;
+        const frais = Number(commande.frais_livraison);
+        const commission = Number(commande.commission_commercial);
+
+        beneficeNetTotal += caCommande - coutRevientCommande - frais - commission;
+
+        const commercial = (commande as any).commercial;
         if (commercial) {
           if (!commissionsParCommercial[commercial.id]) {
             commissionsParCommercial[commercial.id] = {
@@ -105,7 +116,7 @@ export class ClosingService {
               montant_du: 0
             };
           }
-          commissionsParCommercial[commercial.id].produits_vendus += order.quantite;
+          commissionsParCommercial[commercial.id].produits_vendus += produitsVendusCommande;
           commissionsParCommercial[commercial.id].montant_du += commission;
         }
       }
@@ -138,7 +149,7 @@ export class ClosingService {
         ...commandesEnAttente.map(c => c.id)
       ];
 
-      await Order.update(
+      await Commande.update(
         { cloture_id: closing.id },
         { where: { id: toutesLesIds }, transaction }
       );
