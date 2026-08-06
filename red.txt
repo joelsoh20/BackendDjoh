@@ -3,6 +3,10 @@ npx tsx src/seed.ts
 taskkill /F /IM node.exe
 eas build --platform android --profile preview
 
+cd DjohFrontend
+npm run build:web
+npm run serve:web
+
 INSERT INTO products (id, nom, prix_catalogue, cout_revient, actif, date_creation, date_modification) 
 VALUES 
 (gen_random_uuid(), 'Chaussures Sport', 10000, 6000, true, NOW(), NOW()),

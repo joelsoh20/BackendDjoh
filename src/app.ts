@@ -25,14 +25,34 @@ export class App {
   private setupMiddlewares(): void {
   // 1. Sécurité et logs (ordre moins important)
   this.app.use(helmet());
+  // Les applications mobiles React Native n'appliquent PAS le CORS : c'est
+  // pourquoi cette liste n'a jamais posé problème jusqu'ici. Le navigateur,
+  // lui, l'applique strictement — l'origine de la PWA DOIT y figurer, sinon
+  // toutes les requêtes sont bloquées.
+  //
+  // Renseignez CORS_ORIGINS dans le .env (domaines séparés par des virgules),
+  // ex : CORS_ORIGINS=https://ndjoh.netlify.app,https://www.ndjoh.cm
+  const originesEnv = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
+  const originesAutorisees = [
+    'http://localhost:3000',   // test local de la PWA (npm run serve:web)
+    'http://localhost:5173',
+    'http://localhost:8081',   // expo start --web
+    'http://localhost:19006',
+    ...originesEnv,
+  ];
+
   this.app.use(cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:8081',
-      'https://ton-site.netlify.app',
-      'https://ton-site.vercel.app',
-      'exp://*'
-    ],
+    origin: (origin, callback) => {
+      // Pas d'origine = appel mobile natif, Postman, curl... : autorisé.
+      if (!origin) return callback(null, true);
+      if (originesAutorisees.includes(origin)) return callback(null, true);
+      console.warn(`⛔ CORS refusé pour l'origine : ${origin} (ajoutez-la dans CORS_ORIGINS)`);
+      return callback(new Error('Origine non autorisée par CORS'));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
