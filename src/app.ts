@@ -39,9 +39,8 @@ export class App {
 
   const originesAutorisees = [
     'http://localhost:3000',   // test local de la PWA (npm run serve:web)
-    'http://localhost:5173',
     'http://localhost:8081',   // expo start --web
-    'http://localhost:19006',
+    'https://backenddjoh-1.onrender.com', // backend déployé sur Render
     ...originesEnv,
   ];
 
