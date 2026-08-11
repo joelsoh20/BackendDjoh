@@ -25,21 +25,15 @@ export class App {
   private setupMiddlewares(): void {
   // 1. Sécurité et logs (ordre moins important)
   this.app.use(helmet());
-  // Les applications mobiles React Native n'appliquent PAS le CORS : c'est
-  // pourquoi cette liste n'a jamais posé problème jusqu'ici. Le navigateur,
-  // lui, l'applique strictement — l'origine de la PWA DOIT y figurer, sinon
-  // toutes les requêtes sont bloquées.
-  //
-  // Renseignez CORS_ORIGINS dans le .env (domaines séparés par des virgules),
-  // ex : CORS_ORIGINS=https://ndjoh.netlify.app,https://www.ndjoh.cm
+
   const originesEnv = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
 
   const originesAutorisees = [
-    'http://localhost:3000',   // test local de la PWA (npm run serve:web)
-    'http://localhost:8081',   // expo start --web
+    // 'http://localhost:3000',   // test local de la PWA (npm run serve:web)
+    // 'http://localhost:8081',   // expo start --web
     'https://ndjohagogo.netlify.app', // backend déployé sur Render
     ...originesEnv,
   ];

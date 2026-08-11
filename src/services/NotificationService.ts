@@ -2,6 +2,7 @@
 import { NotificationToken } from '../models/NotificationToken';
 import { User } from '../models/User';
 import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
+import { Op } from 'sequelize';
 
 export class NotificationService {
   private expo: Expo;
@@ -15,6 +16,19 @@ export class NotificationService {
    */
   async registerToken(userId: string, token: string, platform?: string): Promise<void> {
     try {
+      // Un token identifie un APPAREIL, pas un compte. Si ce token était
+      // déjà rattaché à un autre utilisateur (appareil partagé, ou
+      // déconnexion/reconnexion avec un autre compte), on le détache
+      // d'abord : sinon les notifications destinées à l'ancien
+      // utilisateur continuent d'arriver sur un téléphone où quelqu'un
+      // d'autre est maintenant connecté.
+      const detaches = await NotificationToken.destroy({
+        where: { token, user_id: { [Op.ne]: userId } }
+      });
+      if (detaches > 0) {
+        console.log(`🔄 Token détaché de ${detaches} autre(s) compte(s) avant réattribution`);
+      }
+
       const existing = await NotificationToken.findOne({
         where: { user_id: userId, token }
       });
@@ -39,10 +53,7 @@ export class NotificationService {
 
   /**
    * Envoie les messages à Expo, INSPECTE les tickets retournés (jusqu'ici
-   * ignorés — c'est ce qui rendait les échecs invisibles en production :
-   * un ticket "error" avec details.error = 'InvalidCredentials' signale
    * des identifiants push (FCM/APNs) mal configurés côté EAS, tandis que
-   * 'DeviceNotRegistered' signale un token obsolète à nettoyer).
    */
   private async envoyerMessages(messages: ExpoPushMessage[]): Promise<void> {
     if (messages.length === 0) return;
