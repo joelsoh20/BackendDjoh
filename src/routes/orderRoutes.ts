@@ -16,6 +16,7 @@ const livraisonCtrl = new OrderLivraisonController();
 router.get('/mes-commandes', auth, orderCtrl.getMesCommandes);
 router.get('/mon-dashboard', auth, dashboardCtrl.getMonDashboard);
 router.patch('/:id/statut', auth, adminOrManager, statutCtrl.updateStatut);
+router.patch('/:id/corriger-livraison', auth, adminOrManager, statutCtrl.corrigerLivraison);
 router.put('/:id', auth, orderCtrl.updateOrder);
 router.delete('/:id', auth, orderCtrl.deleteOrder);
 router.patch('/assigner-service', auth, adminOrManager, livraisonCtrl.assignerServiceLivraison);

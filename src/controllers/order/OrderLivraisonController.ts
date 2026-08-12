@@ -4,33 +4,9 @@ import { Commande } from '../../models/Commande';
 import { CommandeLigne } from '../../models/CommandeLigne';
 import { StockLivraison } from '../../models/StockLivraison';
 import { Database } from '../../config/database';
+import { verifierStockService, formaterMessageManquants } from '../../utils/verifierStockService';
 
 export class OrderLivraisonController extends OrderController {
-
-  // Vérifie si un produit est disponible dans le service de livraison
-  private async verifierStockServiceLivraison(
-    productId: string,
-    quantite: number,
-    serviceLivraisonId: string
-  ): Promise<{ valid: boolean; message?: string }> {
-    try {
-      const stockService = await StockLivraison.findOne({
-        where: { service_id: serviceLivraisonId, product_id: productId }
-      });
-
-      if (!stockService) {
-        return { valid: false, message: '❌ Ce produit n\'est pas disponible dans ce service.' };
-      }
-
-      if (stockService.quantite < quantite) {
-        return { valid: false, message: `❌ Quantité insuffisante. Stock disponible : ${stockService.quantite}` };
-      }
-
-      return { valid: true };
-    } catch (error) {
-      return { valid: false, message: '❌ Erreur lors de la vérification du stock' };
-    }
-  }
 
   // Assigner un service de livraison à une commande (tous ses produits)
   assignerServiceLivraison = async (req: Request, res: Response): Promise<void> => {
@@ -56,14 +32,20 @@ export class OrderLivraisonController extends OrderController {
 
       const lignes = (commande as any).lignes as CommandeLigne[];
 
-      for (const ligne of lignes) {
-        const verification = await this.verifierStockServiceLivraison(
-          ligne.product_id, ligne.quantite, serviceLivraisonId
-        );
-        if (!verification.valid) {
-          await transaction.rollback();
-          return this.badRequest(res, `${verification.message} (produit concerné dans la commande)`);
-        }
+      // Vérifie TOUTES les lignes d'un coup et remonte la liste complète
+      // des manques (au lieu de s'arrêter au premier produit en rupture).
+      const { ok, manquants } = await verifierStockService(
+        serviceLivraisonId,
+        lignes.map(l => ({ product_id: l.product_id, quantite: l.quantite }))
+      );
+      if (!ok) {
+        await transaction.rollback();
+        res.status(400).json({
+          success: false,
+          message: formaterMessageManquants(manquants),
+          manquants,
+        });
+        return;
       }
 
       commande.service_livraison_id = serviceLivraisonId;

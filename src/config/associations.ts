@@ -9,6 +9,7 @@ import { MonthlyClosing } from '../models/MonthlyClosing';
 import { Stock } from '../models/Stock';
 import { StockLivraison } from '../models/StockLivraison';
 import { ServiceLivraison } from '../models/ServiceLivraison';
+import { StockMouvement } from '../models/StockMouvement';
 
 
 export const setupAssociations = (): void => {
@@ -130,4 +131,9 @@ export const setupAssociations = (): void => {
 
   Product.hasOne(Stock, { foreignKey: 'product_id', as: 'stock' });
   Stock.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
+
+  Product.hasMany(StockMouvement, { foreignKey: 'product_id', as: 'mouvements' });
+  StockMouvement.belongsTo(Product, { foreignKey: 'product_id', as: 'produit' });
+  User.hasMany(StockMouvement, { foreignKey: 'user_id', as: 'mouvementsStock' });
+  StockMouvement.belongsTo(User, { foreignKey: 'user_id', as: 'auteur' });
 };
