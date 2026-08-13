@@ -60,13 +60,15 @@ export class OrderCommentController extends BaseController {
           for (const r of recipients) {
             await notifService.sendToUser(r.id,
               '💬 Nouveau commentaire',
-              `${authorName} a commenté sa commande pour ${commande.client_nom}`
+              `${authorName} a commenté sa commande pour ${commande.client_nom}`,
+              { type: 'comment', orderId: order_id }
             );
           }
         } else {
           await notifService.sendToUser(commande.commercial_id,
             '💬 Nouveau commentaire',
-            `${authorName} a commenté votre commande pour ${commande.client_nom}`
+            `${authorName} a commenté votre commande pour ${commande.client_nom}`,
+            { type: 'comment', orderId: order_id }
           );
         }
       } catch (notifErr) {

@@ -24,9 +24,15 @@ export class OrderStatutController extends OrderController {
     try {
       const id = req.params.id as string;
       const { statut, frais_livraison, service_livraison_id } = req.body;
+      // Verrou de ligne : deux requêtes concurrentes (double-tap, retry
+      // réseau) sur la MÊME commande sont ainsi sérialisées — la seconde
+      // attend que la première ait commité avant de lire le statut, ce
+      // qui rend les gardes d'idempotence ci-dessous fiables même en cas
+      // d'appels simultanés (pas seulement séquentiels).
       const commande = await Commande.findByPk(id, {
         include: [{ model: CommandeLigne, as: 'lignes' }],
-        transaction
+        transaction,
+        lock: transaction.LOCK.UPDATE
       });
 
       if (!commande) {
@@ -43,6 +49,24 @@ export class OrderStatutController extends OrderController {
       const statutOriginal = commande.statut;
 
       if (statut === 'livree_payee') {
+        // Idempotence : la commande est déjà livrée, on ne rejoue pas le
+        // mouvement de stock ni le recalcul de commission. Sans cette
+        // garde, un double-tap sur "Livré" ou un retry réseau décrémente
+        // deux fois le stock du service de livraison pour la même
+        // commande. Pour corriger frais/service après coup, on utilise
+        // corrigerLivraison, pas ce endpoint.
+        if (statutOriginal === 'livree_payee') {
+          await transaction.commit();
+          const commandeInchangee = await Commande.findByPk(id, {
+            include: [
+              { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
+              { model: User, as: 'commercial', attributes: ['id', 'nom'] },
+              { model: ServiceLivraison, as: 'service_livraison' }
+            ]
+          });
+          return this.success(res, commandeInchangee, 'Commande déjà livrée (aucune modification)');
+        }
+
         // Vérifie AVANT toute modification que le service choisi a bien
         // tout le stock nécessaire. Auparavant, une rupture de stock ne
         // bloquait rien : la commande était quand même marquée livrée,
@@ -73,17 +97,17 @@ export class OrderStatutController extends OrderController {
         }
 
         // Décrémente le stock du service de livraison pour chaque produit
-        // de la commande (déjà validé suffisant ci-dessus).
+        // de la commande (déjà validé suffisant ci-dessus). decrement()
+        // génère un UPDATE atomique ("quantite = quantite - X") plutôt
+        // qu'un lire-puis-écrire : deux commandes livrées en même temps
+        // par le même service ne peuvent donc pas s'écraser l'une
+        // l'autre et faire perdre un mouvement de stock.
         if (service_livraison_id) {
           for (const ligne of lignes) {
-            const stockLivraison = await StockLivraison.findOne({
-              where: { service_id: service_livraison_id, product_id: ligne.product_id },
-              transaction
-            });
-            if (stockLivraison) {
-              stockLivraison.quantite -= ligne.quantite;
-              await stockLivraison.save({ transaction });
-            }
+            await StockLivraison.decrement(
+              { quantite: ligne.quantite },
+              { where: { service_id: service_livraison_id, product_id: ligne.product_id }, transaction }
+            );
           }
         }
       }
@@ -99,14 +123,10 @@ export class OrderStatutController extends OrderController {
         if (statutOriginal === 'livree_payee') {
           if (commande.service_livraison_id) {
             for (const ligne of lignes) {
-              const stockLivraison = await StockLivraison.findOne({
-                where: { service_id: commande.service_livraison_id, product_id: ligne.product_id },
-                transaction
-              });
-              if (stockLivraison) {
-                stockLivraison.quantite += ligne.quantite;
-                await stockLivraison.save({ transaction });
-              }
+              await StockLivraison.increment(
+                { quantite: ligne.quantite },
+                { where: { service_id: commande.service_livraison_id, product_id: ligne.product_id }, transaction }
+              );
             }
           }
           commande.statut = 'validee';
@@ -128,7 +148,8 @@ export class OrderStatutController extends OrderController {
             await notifService.sendToUser(
               commande.commercial_id,
               '⚠️ Livraison annulée',
-              `La livraison de votre commande pour ${commande.client_nom} a été annulée et remise en attente de retraitement.${motifTexte}`
+              `La livraison de votre commande pour ${commande.client_nom} a été annulée et remise en attente de retraitement.${motifTexte}`,
+              { type: 'commande', orderId: commande.id }
             );
           } catch (notifErr) {
             console.error('Erreur notification statut:', notifErr);
@@ -158,12 +179,14 @@ export class OrderStatutController extends OrderController {
           const admins = await User.findAll({ where: { role: 'admin' as any, actif: true }, attributes: ['id'] });
           const commercial = (commandeAvecRelations as any)?.commercial;
           for (const a of admins) {
-            await notifService.sendToUser(a.id, '✅ Commande livrée', `${commercial?.nom} - commande pour ${commande.client_nom} livrée.`);
+            await notifService.sendToUser(a.id, '✅ Commande livrée', `${commercial?.nom} - commande pour ${commande.client_nom} livrée.`,
+              { type: 'commande', orderId: commande.id });
           }
           await notifService.sendToUser(
             commande.commercial_id,
             '✅ Commande livrée',
-            `Votre commande pour ${commande.client_nom} a été livrée. Commission: ${commande.commission_commercial} FCFA`
+            `Votre commande pour ${commande.client_nom} a été livrée. Commission: ${commande.commission_commercial} FCFA`,
+            { type: 'commande', orderId: commande.id }
           );
         }
       } catch (notifErr) {
@@ -197,9 +220,15 @@ export class OrderStatutController extends OrderController {
       const id = req.params.id as string;
       const { frais_livraison, service_livraison_id } = req.body;
 
+      // Verrou de ligne : voir le commentaire équivalent dans updateStatut.
+      // Sans lui, deux corrections concurrentes sur la même commande
+      // peuvent toutes deux lire l'ancien service_livraison_id avant que
+      // l'une des deux ne commite, et donc toutes deux restituer/décrémenter
+      // le stock — un double mouvement au lieu d'un seul.
       const commande = await Commande.findByPk(id, {
         include: [{ model: CommandeLigne, as: 'lignes' }],
-        transaction
+        transaction,
+        lock: transaction.LOCK.UPDATE
       });
 
       if (!commande) {
@@ -241,31 +270,23 @@ export class OrderStatutController extends OrderController {
           }
         }
 
-        // Restitue le stock à l'ancien service
+        // Restitue le stock à l'ancien service (UPDATE atomique)
         if (ancienServiceId) {
           for (const ligne of lignes) {
-            const stock = await StockLivraison.findOne({
-              where: { service_id: ancienServiceId, product_id: ligne.product_id },
-              transaction
-            });
-            if (stock) {
-              stock.quantite += ligne.quantite;
-              await stock.save({ transaction });
-            }
+            await StockLivraison.increment(
+              { quantite: ligne.quantite },
+              { where: { service_id: ancienServiceId, product_id: ligne.product_id }, transaction }
+            );
           }
         }
 
-        // Décrémente le nouveau service
+        // Décrémente le nouveau service (UPDATE atomique)
         if (nouveauServiceId) {
           for (const ligne of lignes) {
-            const stock = await StockLivraison.findOne({
-              where: { service_id: nouveauServiceId, product_id: ligne.product_id },
-              transaction
-            });
-            if (stock) {
-              stock.quantite -= ligne.quantite;
-              await stock.save({ transaction });
-            }
+            await StockLivraison.decrement(
+              { quantite: ligne.quantite },
+              { where: { service_id: nouveauServiceId, product_id: ligne.product_id }, transaction }
+            );
           }
         }
 

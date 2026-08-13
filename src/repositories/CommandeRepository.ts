@@ -3,6 +3,7 @@ import { Commande } from '../models/Commande';
 import { CommandeLigne } from '../models/CommandeLigne';
 import { Product } from '../models/Product';
 import { User } from '../models/User';
+import { ServiceLivraison } from '../models/ServiceLivraison';
 import { Op } from 'sequelize';
 import { StatutCommande } from '../types';
 
@@ -15,7 +16,8 @@ export class CommandeRepository extends BaseRepository<Commande> {
     return this.findAll({
       include: [
         { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
-        { model: User, as: 'commercial', attributes: { exclude: ['mot_de_passe'] } }
+        { model: User, as: 'commercial', attributes: { exclude: ['mot_de_passe'] } },
+        { model: ServiceLivraison, as: 'service_livraison' }
       ],
       ...options
     });

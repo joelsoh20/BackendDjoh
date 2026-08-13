@@ -49,7 +49,7 @@ export class StatsController extends BaseController {
         type: QueryTypes.SELECT
       });
 
-      console.log('[getClassement] mois:', JSON.stringify(classementMois));
+      //console.log('[getClassement] mois:', JSON.stringify(classementMois));
 
       const classementMoisPrecedent = await sequelize.query(requeteClassement, {
         replacements: {
@@ -64,7 +64,7 @@ export class StatsController extends BaseController {
         moisPrecedent: classementMoisPrecedent,
       });
     } catch (err: any) {
-      console.error('Erreur classement:', err.message);
+      //console.error('Erreur classement:', err.message);
       this.error(res, 'Erreur');
     }
   };

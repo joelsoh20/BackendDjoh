@@ -5,6 +5,7 @@ import { Commande } from '../../models/Commande';
 import { CommandeLigne } from '../../models/CommandeLigne';
 import { Product } from '../../models/Product';
 import { User } from '../../models/User';
+import { ServiceLivraison } from '../../models/ServiceLivraison';
 import { Database } from '../../config/database';
 import { Op } from 'sequelize';
 
@@ -41,7 +42,8 @@ export class OrderController extends BaseController {
       const commande = await this.commandeRepo.findById(req.params.id as string, {
         include: [
           { model: CommandeLigne, as: 'lignes', include: [{ model: Product, as: 'produit' }] },
-          { model: User, as: 'commercial' }
+          { model: User, as: 'commercial' },
+          { model: ServiceLivraison, as: 'service_livraison' }
         ]
       });
       if (!commande) return this.notFound(res, 'Commande non trouvée');
@@ -124,7 +126,8 @@ export class OrderController extends BaseController {
         const notifService = new NotificationService();
         for (const admin of adminsManagers) {
           await notifService.sendToUser(admin.id, '🛍️ Nouvelle commande',
-            `${commercial?.nom || 'Un commercial'} a envoyé une commande pour ${client_nom}`);
+            `${commercial?.nom || 'Un commercial'} a envoyé une commande pour ${client_nom}`,
+            { type: 'commande', orderId: commande.id });
         }
       } catch (notifErr) { console.error('Erreur notification:', notifErr); }
 
@@ -139,15 +142,6 @@ export class OrderController extends BaseController {
     }
   };
 
-  /**
-   * Modification par le commercial tant que la commande est "recue".
-   * Champs client autorisés sur l'en-tête ; product_id/quantite/prix_unitaire_reel
-   * (si fournis) s'appliquent à la première ligne — l'appli mobile n'édite
-   * pour l'instant qu'un seul produit par commande (limitation déjà présente
-   * avant cette refonte, à traiter côté frontend pour le multi-produits).
-   * Ni le statut, ni les frais, ni la commission, ni la clôture ne sont
-   * modifiables via cette route.
-   */
   /**
    * Modification par le commercial tant que la commande est "recue".
    * Champs client autorisés sur l'en-tête. Si un tableau "lignes" est

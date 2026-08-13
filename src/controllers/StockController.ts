@@ -33,49 +33,18 @@ export class StockController extends BaseController {
   };
 
   /**
-   * Ajoute (ou retire, admin uniquement) du stock, et trace le mouvement
-   * pour permettre au manager de corriger une saisie récente (< 1h).
-   * Le manager peut TOUJOURS ajouter — l'ancienne logique bloquait à tort
-   * l'ajout dès que le stock n'avait pas été touché depuis plus d'1h, ce
-   * qui rendait la fonctionnalité quasi inutilisable en pratique.
+   * Ajoute (ou retire) du stock général, et trace le mouvement.
+   * Réservé à l'admin (voir stockRoutes.ts) — le manager ne peut plus
+   * approvisionner le stock général du tout.
    */
   ajouter = async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = (req as any).utilisateur.id;
-      const user = await User.findByPk(userId);
       const { product_id, quantite } = req.body;
       const qte = parseInt(quantite);
 
-      if (user?.role === 'manager' && qte < 0) {
-        return this.forbidden(res, 'Vous ne pouvez pas diminuer le stock. Contactez l\'administrateur.');
-      }
-
       await this.stockRepo.augmenterStock(product_id, qte);
       await StockMouvement.create({ product_id, user_id: userId, quantite: qte });
-
-      // Notification à l'admin si c'est un manager qui modifie
-      if (user?.role === 'manager') {
-        try {
-          const admins = await User.findAll({
-            where: { role: 'admin', actif: true },
-            attributes: ['id']
-          });
-
-          const { NotificationService } = require('../services/NotificationService');
-          const notifService = new NotificationService();
-          const produit = await this.stockRepo.findByProduct(product_id);
-
-          for (const admin of admins) {
-            await notifService.sendToUser(
-              admin.id,
-              '📦 Stock modifié',
-             `${user.nom} (manager) a ${qte >= 0 ? 'ajouté' : 'retiré'} ${Math.abs(qte)} unité(s) ${(produit as any)?.produit?.nom ? `de ${(produit as any).produit.nom}` : ''} au stock général.`
-            );
-          }
-        } catch (notifErr) {
-          console.error('Erreur notification stock:', notifErr);
-        }
-      }
 
       const updated = await this.stockRepo.findByProduct(product_id);
       const action = qte >= 0 ? 'augmenté' : 'diminué';
