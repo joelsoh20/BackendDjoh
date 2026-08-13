@@ -47,7 +47,6 @@ export class OrderLivraisonController extends OrderController {
         return;
       }
 
-      // Vérifie TOUTES les lignes d'un coup et remonte la liste complète
       // des manques (au lieu de s'arrêter au premier produit en rupture).
       const { ok, manquants } = await verifierStockService(
         serviceLivraisonId,
