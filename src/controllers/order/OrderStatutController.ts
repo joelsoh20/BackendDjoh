@@ -29,10 +29,15 @@ export class OrderStatutController extends OrderController {
       // attend que la première ait commité avant de lire le statut, ce
       // qui rend les gardes d'idempotence ci-dessous fiables même en cas
       // d'appels simultanés (pas seulement séquentiels).
+      // Postgres refuse FOR UPDATE sur un LEFT OUTER JOIN complet (erreur
+      // "FOR UPDATE cannot be applied to the nullable side of an outer
+      // join") — { level, of: Commande } restreint le verrou à la seule
+      // table Commande (FOR UPDATE OF "Commande"), ce qui est autorisé
+      // même avec l'include sur "lignes".
       const commande = await Commande.findByPk(id, {
         include: [{ model: CommandeLigne, as: 'lignes' }],
         transaction,
-        lock: transaction.LOCK.UPDATE
+        lock: { level: transaction.LOCK.UPDATE, of: Commande }
       });
 
       if (!commande) {
@@ -228,7 +233,7 @@ export class OrderStatutController extends OrderController {
       const commande = await Commande.findByPk(id, {
         include: [{ model: CommandeLigne, as: 'lignes' }],
         transaction,
-        lock: transaction.LOCK.UPDATE
+        lock: { level: transaction.LOCK.UPDATE, of: Commande }
       });
 
       if (!commande) {

@@ -28,7 +28,7 @@ export class OrderLivraisonController extends OrderController {
       const commande = await Commande.findByPk(orderId, {
         include: [{ model: CommandeLigne, as: 'lignes' }],
         transaction,
-        lock: transaction.LOCK.UPDATE
+        lock: { level: transaction.LOCK.UPDATE, of: Commande }
       });
       if (!commande) {
         await transaction.rollback();
