@@ -14,5 +14,7 @@ router.patch('/:id/toggle-actif', auth, adminOnly, controller.toggleActif);
 router.patch('/:id/mot-de-passe', auth, adminOnly, controller.changerMotDePasse);
 router.post('/:userId/commissions-produits', auth, adminOnly, controller.addCommissionProduit);
 router.delete('/:userId/commissions-produits/:productId', auth, adminOnly, controller.removeCommissionProduit);
+router.post('/:userId/bonus-paliers', auth, adminOnly, controller.addBonusPalier);
+router.delete('/:userId/bonus-paliers/:palierId', auth, adminOnly, controller.removeBonusPalier);
 
 export default router;

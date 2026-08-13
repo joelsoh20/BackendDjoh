@@ -1,6 +1,7 @@
 import { User } from '../models/User';
 import { Product } from '../models/Product';
 import { ProductCommission } from '../models/ProductCommission';
+import { BonusPalier } from '../models/BonusPalier';
 import { Commande } from '../models/Commande';
 import { CommandeLigne } from '../models/CommandeLigne';
 import { OrderComment } from '../models/OrderComment';
@@ -98,6 +99,18 @@ export const setupAssociations = (): void => {
   ProductCommission.belongsTo(Product, {
     foreignKey: 'product_id',
     as: 'produit'
+  });
+
+  // ============================================
+  // USER ↔ BONUS_PALIER (paliers de bonus mensuel d'un commercial)
+  // ============================================
+  User.hasMany(BonusPalier, {
+    foreignKey: 'user_id',
+    as: 'bonus_paliers'
+  });
+  BonusPalier.belongsTo(User, {
+    foreignKey: 'user_id',
+    as: 'commercial'
   });
 
   ServiceLivraison.hasMany(StockLivraison, { foreignKey: 'service_id', as: 'stocks' });

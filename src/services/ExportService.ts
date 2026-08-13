@@ -114,27 +114,32 @@ export class ExportService {
           let y = doc.y;
           doc.fontSize(10).font('Helvetica-Bold').fillColor('#000');
           doc.text('Commercial', startX, y);
-          doc.text('Produits vendus', startX + 250, y);
-          doc.text('Montant dû', startX + 400, y);
+          doc.text('Produits vendus', startX + 200, y);
+          doc.text('Commission', startX + 330, y);
+          doc.text('Bonus', startX + 440, y);
           y += 16;
           doc.moveTo(startX, y).lineTo(545, y).strokeColor('#DDDDDD').stroke();
           y += 8;
 
           doc.font('Helvetica').fillColor('#333');
           let totalCommissions = 0;
+          let totalBonus = 0;
           for (const comm of commissions) {
             doc.text(comm.nom || '-', startX, y);
-            doc.text(String(comm.produits_vendus ?? 0), startX + 250, y);
-            doc.text(`${Number(comm.montant_du || 0).toLocaleString('fr-FR')} FCFA`, startX + 400, y);
+            doc.text(String(comm.produits_vendus ?? 0), startX + 200, y);
+            doc.text(`${Number(comm.montant_du || 0).toLocaleString('fr-FR')} FCFA`, startX + 330, y);
+            doc.text(`${Number(comm.bonus || 0).toLocaleString('fr-FR')} FCFA`, startX + 440, y);
             totalCommissions += Number(comm.montant_du || 0);
+            totalBonus += Number(comm.bonus || 0);
             y += 18;
           }
           y += 4;
           doc.moveTo(startX, y).lineTo(545, y).strokeColor('#DDDDDD').stroke();
           y += 8;
           doc.font('Helvetica-Bold').fillColor('#000');
-          doc.text('Total', startX + 250, y);
-          doc.text(`${totalCommissions.toLocaleString('fr-FR')} FCFA`, startX + 400, y);
+          doc.text('Total', startX + 200, y);
+          doc.text(`${totalCommissions.toLocaleString('fr-FR')} FCFA`, startX + 330, y);
+          doc.text(`${totalBonus.toLocaleString('fr-FR')} FCFA`, startX + 440, y);
         }
       } else {
         doc.fontSize(12).font('Helvetica').fillColor('#777')

@@ -7,8 +7,10 @@ import { MonthlyClosing } from '../models/MonthlyClosing';
 import { Charge } from '../models/Charge';
 import { Op } from 'sequelize';
 import { ActionCommandesEnAttente } from '../types';
+import { BonusService } from './BonusService';
 
 export class ClosingService {
+  private bonusService = new BonusService();
 
   async cloturerMois(
     mois: number,
@@ -113,13 +115,56 @@ export class ClosingService {
               commercial_id: commercial.id,
               nom: commercial.nom,
               produits_vendus: 0,
-              montant_du: 0
+              montant_du: 0,
+              bonus: 0
             };
           }
           commissionsParCommercial[commercial.id].produits_vendus += produitsVendusCommande;
           commissionsParCommercial[commercial.id].montant_du += commission;
         }
       }
+
+      // 4bis. Bonus mensuel par commercial, selon les paliers configurés
+      // par l'admin (voir BonusService) et le nombre de commandes
+      // SOUMISES dans le mois — même métrique que le dashboard commercial
+      // en temps réel, pas seulement les commandes livrées : un
+      // commercial actif est récompensé même si une partie de ses
+      // commandes a fini annulée.
+      const commandesSoumisesMois = await Commande.findAll({
+        where: { date_creation: { [Op.between]: [debutMois, finMois] } },
+        attributes: ['id', 'commercial_id'],
+        include: [{ model: User, as: 'commercial', attributes: ['id', 'nom'] }],
+        transaction
+      });
+
+      const commandesParCommercial: Record<string, { nom: string; count: number }> = {};
+      for (const c of commandesSoumisesMois) {
+        const commercial = (c as any).commercial;
+        if (!commercial) continue;
+        if (!commandesParCommercial[commercial.id]) {
+          commandesParCommercial[commercial.id] = { nom: commercial.nom, count: 0 };
+        }
+        commandesParCommercial[commercial.id].count += 1;
+      }
+
+      let bonusTotal = 0;
+      for (const [commercialId, info] of Object.entries(commandesParCommercial)) {
+        const { montant: bonus } = await this.bonusService.calculerBonus(commercialId, info.count);
+        if (bonus <= 0) continue;
+
+        bonusTotal += bonus;
+        if (!commissionsParCommercial[commercialId]) {
+          commissionsParCommercial[commercialId] = {
+            commercial_id: commercialId,
+            nom: info.nom,
+            produits_vendus: 0,
+            montant_du: 0,
+            bonus: 0
+          };
+        }
+        commissionsParCommercial[commercialId].bonus = bonus;
+      }
+      beneficeNetTotal -= bonusTotal;
 
       // 5. Déduire les charges
       const charges = await Charge.findAll({

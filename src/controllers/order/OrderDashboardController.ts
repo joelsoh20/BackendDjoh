@@ -4,8 +4,10 @@ import { Commande } from '../../models/Commande';
 import { CommandeLigne } from '../../models/CommandeLigne';
 import { Product } from '../../models/Product';
 import { Op } from 'sequelize';
+import { BonusService } from '../../services/BonusService';
 
 export class OrderDashboardController extends OrderController {
+  private bonusService = new BonusService();
 
   getMonDashboard = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -55,7 +57,12 @@ export class OrderDashboardController extends OrderController {
       const totalVentes = commandesLivreesMois.reduce(
         (sum: number, c: any) => sum + (c.lignes || []).reduce((s: number, l: any) => s + Number(l.prix_unitaire_reel) * l.quantite, 0), 0
       );
-      const bonus = totalCommandesMois >= 110 ? 10000 : 0;
+
+      // Bonus mensuel selon les paliers configurés par l'admin pour ce
+      // commercial (voir BonusService) — basé sur le nombre de commandes
+      // SOUMISES ce mois (totalCommandesMois), comme c'était déjà le cas
+      // avec l'ancien seuil fixe (110 → 10000 FCFA) que ceci remplace.
+      const { montant: bonus, palierAtteint, prochainPalier } = await this.bonusService.calculerBonus(userId, totalCommandesMois);
 
       // Évolution sur 6 mois (par mois de LIVRAISON)
       const evolution = [];
@@ -104,6 +111,8 @@ export class OrderDashboardController extends OrderController {
         totalVentes,
         totalCommandesMois,
         bonus,
+        bonusPalierAtteint: palierAtteint,
+        bonusProchainPalier: prochainPalier,
         evolution,
         dernieresCommandes: commandesSimplifiees.slice(0, 50),
       });
