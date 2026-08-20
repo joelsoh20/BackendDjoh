@@ -8,6 +8,7 @@ import { User } from '../models/User';
 import { Commande } from '../models/Commande';
 import { CommandeLigne } from '../models/CommandeLigne';
 import { Op } from 'sequelize';
+import { Database } from '../config/database';
 
 export class ServiceLivraisonController extends BaseController {
 
@@ -33,38 +34,49 @@ export class ServiceLivraisonController extends BaseController {
   };
 
   ajouterStock = async (req: Request, res: Response): Promise<void> => {
+    const sequelize = Database.getInstance();
+    const transaction = await sequelize.transaction();
     try {
       const userId = (req as any).utilisateur.id;
-      const user = await User.findByPk(userId);
+      const user = await User.findByPk(userId, { transaction });
       const { service_id, product_id, quantite } = req.body;
       const qte = parseInt(quantite);
 
-      // Manager : pas de diminution
-      if (user?.role === 'manager' && qte < 0) {
-        return this.forbidden(res, 'Vous ne pouvez pas diminuer le stock.');
-      }
-
-      // Vérifier le stock général disponible
-      const stockGeneral = await Stock.findOne({ where: { product_id } });
+      // Le manager peut librement transférer du stock vers un service de
+      // livraison OU en retirer (correction d'erreur, retour au stock
+      // général) — décision produit : plus de restriction spécifique au
+      // manager ici. Deux limites objectives subsistent : le stock général
+      // disponible pour un transfert positif, et le stock du service pour
+      // un retrait (impossible de retirer plus qu'il n'y a).
+      const stockGeneral = await Stock.findOne({ where: { product_id }, transaction });
       const disponible = stockGeneral ? stockGeneral.quantite : 0;
 
       if (qte > disponible) {
+        await transaction.rollback();
         return this.badRequest(res, `Stock insuffisant. Disponible dans le stock général : ${disponible}`);
       }
 
-      // Déduire du stock général
-      if (stockGeneral) {
-        stockGeneral.quantite -= qte;
-        await stockGeneral.save();
-      }
-
-      // Ajouter au stock du service de livraison
       const [stock] = await StockLivraison.findOrCreate({
         where: { service_id, product_id },
-        defaults: { service_id, product_id, quantite: 0 }
+        defaults: { service_id, product_id, quantite: 0 },
+        transaction
       });
-      stock.quantite += qte;
-      await stock.save();
+
+      if (qte < 0 && stock.quantite + qte < 0) {
+        await transaction.rollback();
+        return this.badRequest(res, `Retrait impossible : le service n'a que ${stock.quantite} unité(s) en stock.`);
+      }
+
+      // Déduire/créditer le stock général (UPDATE atomique)
+      if (stockGeneral) {
+        await Stock.decrement({ quantite: qte }, { where: { product_id }, transaction });
+      }
+
+      // Créditer/débiter le stock du service de livraison (UPDATE atomique)
+      await StockLivraison.increment({ quantite: qte }, { where: { service_id, product_id }, transaction });
+
+      await transaction.commit();
+      const stockFinal = await StockLivraison.findOne({ where: { service_id, product_id } });
 
       // Notification à l'admin si c'est un manager
       if (user?.role === 'manager') {
@@ -80,11 +92,12 @@ export class ServiceLivraisonController extends BaseController {
           const { NotificationService } = require('../services/NotificationService');
           const notifService = new NotificationService();
 
+          const action = qte >= 0 ? 'ajouté' : 'retiré';
           for (const admin of admins) {
             await notifService.sendToUser(
               admin.id,
               '🚚 Stock service modifié',
-              `${user.nom} (manager) a transféré ${qte} unité(s) de ${produit?.nom || 'produit'} vers le service "${service?.nom || 'Inconnu'}".`
+              `${user.nom} (manager) a ${action} ${Math.abs(qte)} unité(s) de ${produit?.nom || 'produit'} ${qte >= 0 ? 'au' : 'du'} service "${service?.nom || 'Inconnu'}".`
             );
           }
         } catch (notifErr) {
@@ -92,8 +105,16 @@ export class ServiceLivraisonController extends BaseController {
         }
       }
 
-      this.success(res, stock, `${qte} unité(s) transférée(s) du stock général au service`);
+      const messageResultat = qte >= 0
+        ? `${qte} unité(s) transférée(s) du stock général au service`
+        : `${Math.abs(qte)} unité(s) retirée(s) du service et restituée(s) au stock général`;
+      this.success(res, stockFinal, messageResultat);
     } catch (err: any) {
+      // La transaction peut déjà avoir été commitée si l'erreur vient
+      // d'après (relecture du stock, notification) : ne pas retenter un
+      // rollback dessus, Sequelize lèverait "Transaction cannot be rolled
+      // back because it has been finished".
+      if (!transaction.finished) await transaction.rollback();
       console.error('Erreur ajouterStock:', err.message);
       this.error(res, 'Erreur');
     }
