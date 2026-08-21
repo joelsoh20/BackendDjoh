@@ -36,6 +36,7 @@ export class ServiceLivraisonController extends BaseController {
   ajouterStock = async (req: Request, res: Response): Promise<void> => {
     const sequelize = Database.getInstance();
     const transaction = await sequelize.transaction();
+    let transactionTerminee = false;
     try {
       const userId = (req as any).utilisateur.id;
       const user = await User.findByPk(userId, { transaction });
@@ -52,6 +53,7 @@ export class ServiceLivraisonController extends BaseController {
       const disponible = stockGeneral ? stockGeneral.quantite : 0;
 
       if (qte > disponible) {
+        transactionTerminee = true;
         await transaction.rollback();
         return this.badRequest(res, `Stock insuffisant. Disponible dans le stock général : ${disponible}`);
       }
@@ -63,6 +65,7 @@ export class ServiceLivraisonController extends BaseController {
       });
 
       if (qte < 0 && stock.quantite + qte < 0) {
+        transactionTerminee = true;
         await transaction.rollback();
         return this.badRequest(res, `Retrait impossible : le service n'a que ${stock.quantite} unité(s) en stock.`);
       }
@@ -75,6 +78,7 @@ export class ServiceLivraisonController extends BaseController {
       // Créditer/débiter le stock du service de livraison (UPDATE atomique)
       await StockLivraison.increment({ quantite: qte }, { where: { service_id, product_id }, transaction });
 
+      transactionTerminee = true;
       await transaction.commit();
       const stockFinal = await StockLivraison.findOne({ where: { service_id, product_id } });
 
@@ -110,11 +114,13 @@ export class ServiceLivraisonController extends BaseController {
         : `${Math.abs(qte)} unité(s) retirée(s) du service et restituée(s) au stock général`;
       this.success(res, stockFinal, messageResultat);
     } catch (err: any) {
-      // La transaction peut déjà avoir été commitée si l'erreur vient
-      // d'après (relecture du stock, notification) : ne pas retenter un
-      // rollback dessus, Sequelize lèverait "Transaction cannot be rolled
-      // back because it has been finished".
-      if (!transaction.finished) await transaction.rollback();
+      // La transaction peut déjà avoir été commitée/rollback si l'erreur
+      // vient d'après (relecture du stock, notification) : ne pas
+      // retenter dessus, Sequelize lèverait "Transaction cannot be rolled
+      // back because it has been finished". (Transaction.finished existe
+      // à l'exécution mais n'est pas dans les types publics de Sequelize —
+      // tsc le rejette, d'où ce flag local.)
+      if (!transactionTerminee) await transaction.rollback();
       console.error('Erreur ajouterStock:', err.message);
       this.error(res, 'Erreur');
     }
